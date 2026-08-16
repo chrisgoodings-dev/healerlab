@@ -18,6 +18,7 @@
     </a>
     <nav class="nav-links" aria-label="Primary navigation">
       <a href="#analyse">Analyse</a>
+      <a href="#encounters">Encounters</a>
       <a href="#method">Method</a>
       <a href="#about">About</a>
     </nav>
@@ -25,29 +26,33 @@
   </header>
 
   <main id="top">
-    <section class="hero shell">
+    <section class="hero shell healer-hero">
       <div class="hero-copy">
-        <p class="eyebrow">HEALER PROGRESSION, EXPLAINED</p>
-        <h1>Turn your character data into a <span>clear next move.</span></h1>
-        <p class="hero-intro">HealerLab analyses your Mythic+ profile, gear and raid progress, then ranks practical improvement opportunities instead of just showing another score.</p>
+        <p class="eyebrow" id="hero-kicker">HEALER PROGRESSION, EXPLAINED</p>
+        <h1 id="hero-title">Heal with insight.<br /><span>Progress with purpose.</span></h1>
+        <p class="hero-intro" id="hero-intro">HealerLab combines live character data, secondary-stat alignment and dungeon loot analysis into a practical progression plan for raid and Mythic+.</p>
         <div class="hero-points" aria-label="HealerLab capabilities">
           <span>Live character data</span>
-          <span>Explainable recommendations</span>
-          <span>No account required</span>
+          <span>Stat-aware loot ranking</span>
+          <span>Encounter planning</span>
+        </div>
+        <div class="hero-actions">
+          <a class="hero-action hero-action-primary" href="#analyse">Analyse character</a>
+          <a class="hero-action hero-action-secondary" href="#encounters">Encounter planner</a>
         </div>
       </div>
 
-      <div class="hero-orbit" aria-hidden="true">
-        <div class="orbit-ring orbit-ring-large"></div>
-        <div class="orbit-ring orbit-ring-small"></div>
-        <div class="hero-core">
-          <span class="core-plus">+</span>
-          <strong>HEAL</strong>
-          <small>analyse | improve</small>
+      <div class="hero-showcase" aria-hidden="true">
+        <div class="hero-showcase-glow"></div>
+        <div class="hero-glyph" id="hero-class-glyph">+</div>
+        <div class="hero-showcase-copy">
+          <span id="hero-spec-label">ALL HEALING SPECIALISATIONS</span>
+          <strong id="hero-class-name">HealerLab</strong>
+          <small id="hero-class-tagline">Data. Mastery. Harmony.</small>
         </div>
-        <div class="orbit-chip chip-one">M+</div>
-        <div class="orbit-chip chip-two">GEAR</div>
-        <div class="orbit-chip chip-three">RAID</div>
+        <div class="hero-stat-runes">
+          <span>RAID</span><span>M+</span><span>GEAR</span>
+        </div>
       </div>
     </section>
 
@@ -127,7 +132,7 @@
         </div>
 
         <div id="dashboard" class="dashboard is-hidden">
-          <section class="profile-card card">
+          <section class="profile-card card class-summary-card">
             <div class="profile-identity">
               <div id="avatar" class="avatar" aria-hidden="true">HL</div>
               <div>
@@ -136,14 +141,41 @@
                   <span id="character-role" class="role-badge">HEALER</span>
                 </div>
                 <p id="character-meta" class="muted">Realm | Class | Spec</p>
-                <a id="profile-link" class="profile-link" href="#" target="_blank" rel="noreferrer">Open Raider.IO profile </a>
+                <a id="profile-link" class="profile-link" href="#" target="_blank" rel="noreferrer">Open Raider.IO profile</a>
               </div>
             </div>
-            <div class="headline-stats">
-              <div><span>Item level</span><strong id="item-level">-</strong></div>
-              <div><span>M+ score</span><strong id="mythic-score">-</strong></div>
-              <div><span>Target gap</span><strong id="score-gap">-</strong></div>
+            <div class="class-summary-copy">
+              <p class="eyebrow" id="class-summary-kicker">CLASS FOCUS</p>
+              <h3 id="class-summary-title">Heal with insight. Lead with knowledge.</h3>
+              <p id="class-summary-text">Load a healer to turn this panel into a spec-specific progression summary.</p>
             </div>
+          </section>
+
+          <section class="overview-stat-grid" aria-label="Character overview">
+            <article class="overview-stat-card">
+              <div class="overview-stat-label"><span>ITEM LEVEL</span><i></i></div>
+              <strong id="item-level">-</strong>
+              <small>equipped average</small>
+              <div class="overview-stat-spark" aria-hidden="true"></div>
+            </article>
+            <article class="overview-stat-card">
+              <div class="overview-stat-label"><span>M+ SCORE</span><i></i></div>
+              <strong id="mythic-score">-</strong>
+              <small>current rating</small>
+              <div class="overview-stat-spark" aria-hidden="true"></div>
+            </article>
+            <article class="overview-stat-card">
+              <div class="overview-stat-label"><span>TARGET GAP</span><i></i></div>
+              <strong id="score-gap">-</strong>
+              <small>rating remaining</small>
+              <div class="overview-stat-spark" aria-hidden="true"></div>
+            </article>
+            <article class="overview-stat-card">
+              <div class="overview-stat-label"><span>STAT BALANCE</span><i></i></div>
+              <strong id="overview-stat-alignment">-</strong>
+              <small>secondary-stat fit</small>
+              <div class="overview-stat-spark" aria-hidden="true"></div>
+            </article>
           </section>
 
           <section class="overview-grid">
@@ -217,20 +249,23 @@
             <p id="loot-disclaimer" class="loot-disclaimer">The planner matches healer-eligible dungeon loot to weak equipped slots and ranks relative item-level upgrade opportunity.</p>
           </section>
 
-          <section class="two-column-grid">
-            <article class="card">
-              <div class="card-heading">
-                <div><p class="eyebrow">MYTHIC+ PROFILE</p><h3>Dungeon opportunity map</h3></div>
+          <section class="card encounter-planner-card" id="encounters">
+            <div class="card-heading encounter-heading">
+              <div>
+                <p class="eyebrow">ENCOUNTER PLANNER</p>
+                <h3>Dungeon progression map</h3>
+                <p class="encounter-intro">See the weakest score opportunities beside the gear value of each dungeon, then choose runs that improve more than one part of your character.</p>
               </div>
-              <div id="dungeon-list" class="dungeon-list"></div>
-            </article>
+              <span class="mini-label">MYTHIC+</span>
+            </div>
+            <div id="dungeon-list" class="dungeon-list encounter-grid"></div>
+          </section>
 
-            <article class="card">
-              <div class="card-heading">
-                <div><p class="eyebrow">GEAR TRIAGE</p><h3>Gear upgrade priorities</h3></div>
-              </div>
-              <div id="gear-list" class="gear-list"></div>
-            </article>
+          <section class="card gear-triage-card">
+            <div class="card-heading">
+              <div><p class="eyebrow">GEAR TRIAGE</p><h3>Gear upgrade priorities</h3></div>
+            </div>
+            <div id="gear-list" class="gear-list"></div>
           </section>
 
           <section class="card explanation-card" id="method">

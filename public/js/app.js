@@ -12,6 +12,53 @@ const dashboard = $('#dashboard');
 const submitButton = form.querySelector('button[type="submit"]');
 let activeController = null;
 
+const CLASS_ACCENTS = Object.freeze({
+  Druid: '#FF7D0A',
+  Evoker: '#33937F',
+  Monk: '#00FF98',
+  Paladin: '#F48CBA',
+  Priest: '#FFFFFF',
+  Shaman: '#0070DD',
+});
+
+const SPEC_SUMMARIES = Object.freeze({
+  'Restoration Druid': {
+    title: 'Heal with nature. Shape the fight before damage lands.',
+    text: 'Prioritise predictive HoT coverage, haste/mastery balance and dungeon drops that strengthen the stat profile your selected activity actually rewards.',
+    glyph: '✦',
+  },
+  'Holy Paladin': {
+    title: 'Heal with light. Lead with knowledge.',
+    text: 'Build around deliberate cooldown windows, efficient spot healing and gear choices that preserve throughput without wasting secondary-stat budget.',
+    glyph: '✧',
+  },
+  'Holy Priest': {
+    title: 'Heal with light. Recover the group with purpose.',
+    text: 'Use the planner to turn broad throughput into targeted progression, balancing haste, mastery and encounter coverage rather than chasing item level alone.',
+    glyph: '✧',
+  },
+  'Discipline Priest': {
+    title: 'Prevent damage. Convert preparation into control.',
+    text: 'Disc rewards planning. Use stat alignment and encounter priorities to support reliable ramps, clean cooldown timing and efficient dungeon progression.',
+    glyph: '◇',
+  },
+  'Restoration Shaman': {
+    title: 'Restore with tide, storm and deliberate cooldowns.',
+    text: 'Identify the dungeons and secondary-stat upgrades that improve consistency around major damage events while keeping your gearing decisions explainable.',
+    glyph: '≈',
+  },
+  'Mistweaver Monk': {
+    title: 'Heal in motion. Keep pressure and recovery in balance.',
+    text: 'Use encounter opportunity and stat-fit data together so gearing supports the tempo, mobility and burst recovery that Mistweaver depends on.',
+    glyph: '◉',
+  },
+  'Preservation Evoker': {
+    title: 'Preserve with time. Position every cast with intent.',
+    text: 'Prioritise progression that supports empowered healing, range discipline and efficient stat distribution across raid and Mythic+.',
+    glyph: '◆',
+  },
+});
+
 setupItemTooltips();
 
 function clean(value) {
@@ -53,19 +100,54 @@ function renderRaid(raids) {
   `).join('');
 }
 
-function renderDungeons(dungeons) {
+function renderDungeons(dungeons, lootDungeons = []) {
   const container = $('#dungeon-list');
   if (!dungeons.length) {
     container.innerHTML = '<p class="empty-state">No Mythic+ best-run data was returned.</p>';
     return;
   }
-  container.innerHTML = dungeons.map((run) => `
-    <div class="dungeon-row">
-      <div class="dungeon-name"><strong>${escapeHtml(run.shortName)}</strong><span>${escapeHtml(run.dungeon)}</span></div>
-      <span class="key-level">+${run.level}</span>
-      <span class="score-value">${run.score.toFixed(1)}</span>
-    </div>
-  `).join('');
+
+  const normalise = (value) => clean(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const lootByName = new Map();
+  for (const dungeon of lootDungeons || []) {
+    lootByName.set(normalise(dungeon.name), dungeon);
+    lootByName.set(normalise(dungeon.shortName), dungeon);
+  }
+
+  container.innerHTML = dungeons.map((run, index) => {
+    const loot = lootByName.get(normalise(run.dungeon)) || lootByName.get(normalise(run.shortName));
+    const gearOpportunity = Math.round(Number(loot?.gearOpportunity) || 0);
+    const scoreOpportunity = Math.round(Number(run.opportunity) || 0);
+    const combined = Math.round((scoreOpportunity * 0.55) + (gearOpportunity * 0.45));
+    const icon = loot?.instanceIconUrl
+      ? `<img class="encounter-icon" src="${escapeHtml(loot.instanceIconUrl)}" alt="" loading="lazy" />`
+      : `<span class="encounter-icon encounter-icon-fallback" aria-hidden="true">${escapeHtml(run.shortName.slice(0, 2))}</span>`;
+    const runLink = run.url
+      ? `<a class="encounter-link" href="${escapeHtml(run.url)}" target="_blank" rel="noreferrer">Open run</a>`
+      : '<span class="encounter-link muted">No run link</span>';
+
+    return `
+      <article class="encounter-card${index === 0 ? ' recommended' : ''}">
+        <div class="encounter-card-top">
+          ${icon}
+          <div class="encounter-rank">#${index + 1}</div>
+        </div>
+        <div class="encounter-copy">
+          <span class="encounter-code">${escapeHtml(run.shortName)}</span>
+          <h4>${escapeHtml(run.dungeon)}</h4>
+          <p>Best +${run.level} | ${run.score.toFixed(1)} score</p>
+        </div>
+        <div class="encounter-metrics">
+          <span><small>Score opportunity</small><strong>${scoreOpportunity}</strong></span>
+          <span><small>Gear opportunity</small><strong>${gearOpportunity}</strong></span>
+        </div>
+        <div class="encounter-footer">
+          <span class="encounter-priority">${combined >= 70 ? 'High value' : combined >= 35 ? 'Useful' : 'Stable'}</span>
+          ${runLink}
+        </div>
+      </article>
+    `;
+  }).join('');
 }
 
 function itemTooltipAttributes({ itemId, region, name, itemLevel, stats = {} }) {
@@ -132,7 +214,10 @@ function renderStatAlignment(alignment) {
   const rows = $('#stat-alignment-rows');
   const note = $('#stat-alignment-note');
 
+  const overviewScore = $('#overview-stat-alignment');
+
   if (!alignment?.available) {
+    if (overviewScore) overviewScore.textContent = '-';
     score.className = 'stat-alignment-score neutral';
     score.textContent = '-';
     summary.className = 'stat-alignment-summary empty-state';
@@ -144,6 +229,7 @@ function renderStatAlignment(alignment) {
 
   score.className = `stat-alignment-score ${alignment.status}`;
   score.textContent = `${Math.round(alignment.score)}/100`;
+  if (overviewScore) overviewScore.textContent = `${Math.round(alignment.score)}/100`;
 
   const suggestedOrder = alignment.rows.map((row) => row.label).join(' > ');
   summary.className = 'stat-alignment-summary';
@@ -306,12 +392,51 @@ function renderRecommendations(recommendations) {
   `).join('');
 }
 
+function applyClassPresentation(character) {
+  const className = clean(character?.class) || 'Healer';
+  const specName = clean(character?.active_spec_name);
+  const summaryKey = `${specName} ${className}`.trim();
+  const summary = SPEC_SUMMARIES[summaryKey] || {
+    title: 'Heal with insight. Lead with knowledge.',
+    text: 'Use live progression, stat alignment and dungeon loot data together so the next upgrade has a clear reason behind it.',
+    glyph: '+',
+  };
+  const accent = CLASS_ACCENTS[className] || '#36E0C6';
+
+  document.documentElement.style.setProperty('--class-accent', accent);
+  document.body.dataset.healerClass = className.toLowerCase();
+
+  const heroKicker = $('#hero-kicker');
+  const heroTitle = $('#hero-title');
+  const heroIntro = $('#hero-intro');
+  const heroGlyph = $('#hero-class-glyph');
+  const heroSpec = $('#hero-spec-label');
+  const heroClassName = $('#hero-class-name');
+  const heroTagline = $('#hero-class-tagline');
+  const summaryKicker = $('#class-summary-kicker');
+  const summaryTitle = $('#class-summary-title');
+  const summaryText = $('#class-summary-text');
+
+  if (heroKicker) heroKicker.textContent = `${specName || 'HEALER'} PROGRESSION`.toUpperCase();
+  if (heroTitle) heroTitle.innerHTML = `${escapeHtml(summary.title.split('.')[0] || summary.title)}.<br /><span>${escapeHtml((summary.title.split('.').slice(1).join('.').trim() || 'Progress with purpose.'))}</span>`;
+  if (heroIntro) heroIntro.textContent = summary.text;
+  if (heroGlyph) heroGlyph.textContent = summary.glyph;
+  if (heroSpec) heroSpec.textContent = (specName || 'HEALER').toUpperCase();
+  if (heroClassName) heroClassName.textContent = className;
+  if (heroTagline) heroTagline.textContent = 'Analyse. Optimise. Heal.';
+  if (summaryKicker) summaryKicker.textContent = `${specName || className} FOCUS`.toUpperCase();
+  if (summaryTitle) summaryTitle.textContent = summary.title;
+  if (summaryText) summaryText.textContent = summary.text;
+}
+
 function renderCharacter(character, options) {
   const analysis = buildAnalysis(character, options);
   const score = analysis.currentScore;
   const target = analysis.targetScore;
   const progressPct = Math.round(analysis.progress * 100);
   const itemLevel = Number(character?.gear?.item_level_equipped || character?.gear?.item_level_total || 0);
+
+  applyClassPresentation(character);
 
   $('#character-name').textContent = character.name || 'Unknown character';
   $('#character-role').textContent = character.active_spec_role || 'HEALER';
@@ -351,7 +476,7 @@ function renderCharacter(character, options) {
   profileLink.href = character.profile_url || 'https://raider.io/';
 
   renderRaid(analysis.raids);
-  renderDungeons(analysis.dungeons);
+  renderDungeons(analysis.dungeons, analysis.lootDungeons);
   renderGear(analysis.weakGear, character.region || $('#region').value);
   renderStatAlignment(analysis.statAlignment);
   renderLootPlanner(analysis.lootDungeons, {
