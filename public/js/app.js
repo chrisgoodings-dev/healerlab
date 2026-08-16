@@ -1,6 +1,7 @@
 import { fetchCharacter, fetchOfficialSeasonLoot } from './api.js';
 import { buildAnalysis } from './analysis.js';
 import { demoCharacter } from './demo-data.js';
+import { setupItemTooltips } from './item-tooltips.js';
 
 const $ = (selector) => document.querySelector(selector);
 const form = $('#character-form');
@@ -10,6 +11,8 @@ const loading = $('#loading');
 const dashboard = $('#dashboard');
 const submitButton = form.querySelector('button[type="submit"]');
 let activeController = null;
+
+setupItemTooltips();
 
 function clean(value) {
   return String(value ?? '').trim();
@@ -65,7 +68,28 @@ function renderDungeons(dungeons) {
   `).join('');
 }
 
-function renderGear(gear) {
+function itemTooltipAttributes({ itemId, region, name, itemLevel, stats = {} }) {
+  const id = Number(itemId);
+  if (!Number.isInteger(id) || id <= 0) return '';
+  const attributes = [
+    `data-item-tooltip-id="${id}"`,
+    `data-item-tooltip-region="${escapeHtml(region || 'eu')}"`,
+    `data-item-tooltip-name="${escapeHtml(name || 'Item')}"`,
+    `data-item-tooltip-level="${Number(itemLevel) || 0}"`,
+    `data-item-tooltip-crit="${Number(stats?.crit) || 0}"`,
+    `data-item-tooltip-haste="${Number(stats?.haste) || 0}"`,
+    `data-item-tooltip-mastery="${Number(stats?.mastery) || 0}"`,
+    `data-item-tooltip-versatility="${Number(stats?.versatility) || 0}"`,
+    'tabindex="0"',
+    'role="button"',
+    'aria-haspopup="true"',
+    'aria-expanded="false"',
+    `aria-label="View ${escapeHtml(name || 'item')} details"`,
+  ];
+  return attributes.join(' ');
+}
+
+function renderGear(gear, region) {
   const container = $('#gear-list');
   if (!gear.length) {
     container.innerHTML = '<p class="empty-state">No detailed equipment data was returned.</p>';
@@ -73,9 +97,17 @@ function renderGear(gear) {
   }
 
   container.innerHTML = gear.map((item) => {
+    const tooltipAttributes = itemTooltipAttributes({
+      itemId: item.itemId,
+      region,
+      name: item.name,
+      itemLevel: item.itemLevel,
+      stats: item.secondaryStats,
+    });
+    const tooltipClass = item.itemId ? ' item-tooltip-trigger' : '';
     const icon = item.iconUrl
-      ? `<img class="gear-icon" src="${escapeHtml(item.iconUrl)}" alt="" loading="lazy" />`
-      : `<span class="gear-icon gear-icon-fallback" aria-hidden="true">${escapeHtml(item.label.slice(0, 1))}</span>`;
+      ? `<img class="gear-icon${tooltipClass}" src="${escapeHtml(item.iconUrl)}" alt="" loading="lazy" ${tooltipAttributes} />`
+      : `<span class="gear-icon gear-icon-fallback${tooltipClass}" ${tooltipAttributes}>${escapeHtml(item.label.slice(0, 1))}</span>`;
     const source = item.source === 'blizzard' ? 'Official Blizzard equipment' : 'Raider.IO equipment';
 
     return `
@@ -160,7 +192,7 @@ function itemStatNames(stats) {
     .map(([, label]) => label);
 }
 
-function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) {
+function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel, region } = {}) {
   const bestContainer = $('#best-loot-farm');
   const ranking = $('#loot-ranking');
   const versionElement = $('#loot-version');
@@ -199,8 +231,15 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
 
   const recommendedMatches = best.recommendedMatches || best.matches || [];
   const topItems = recommendedMatches.slice(0, 5).map((match) => {
-    const gearIcon = match.currentIconUrl
-      ? `<img class="loot-gear-icon" src="${escapeHtml(match.currentIconUrl)}" alt="" loading="lazy" />`
+    const tooltipAttributes = itemTooltipAttributes({
+      itemId: match.itemId,
+      region,
+      name: match.itemName,
+      itemLevel: match.dropItemLevel,
+      stats: match.itemSecondaryStats,
+    });
+    const gearIcon = match.itemId
+      ? `<span class="loot-gear-icon loot-gear-icon-fallback item-tooltip-trigger" ${tooltipAttributes}>?</span>`
       : '<span class="loot-gear-icon loot-gear-icon-fallback" aria-hidden="true">+</span>';
     const official = match.itemId ? ` | Blizzard item ${match.itemId}` : '';
     const stats = itemStatNames(match.itemSecondaryStats);
@@ -313,12 +352,13 @@ function renderCharacter(character, options) {
 
   renderRaid(analysis.raids);
   renderDungeons(analysis.dungeons);
-  renderGear(analysis.weakGear);
+  renderGear(analysis.weakGear, character.region || $('#region').value);
   renderStatAlignment(analysis.statAlignment);
   renderLootPlanner(analysis.lootDungeons, {
     version: analysis.lootDataVersion,
     keyLevel: analysis.farmKeyLevel,
     dropItemLevel: analysis.farmDropItemLevel,
+    region: character.region || $('#region').value,
   });
   renderRecommendations(analysis.recommendations);
 

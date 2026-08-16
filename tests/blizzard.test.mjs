@@ -5,6 +5,7 @@ import {
   normaliseBlizzardEquipment,
   normaliseCharacterStatistics,
   normaliseItemSecondaryStats,
+  normaliseItemEffects,
   resolveSecondaryStats,
   slugifyRealm,
   sumEquipmentSecondaryStats,
@@ -216,4 +217,47 @@ test('fills missing character statistics from equipped item totals per stat', ()
   });
   assert.deepEqual(resolved.fallbackStats, ['crit', 'haste', 'mastery']);
   assert.equal(resolved.source, 'blended');
+});
+
+
+test('normalises Blizzard item bonus effects from spell data', () => {
+  const effects = normaliseItemEffects({
+    spells: [
+      {
+        trigger_type: { type: 'ON_EQUIP' },
+        spell: { id: 123, name: 'Verdant Surge' },
+        description: 'Your healing spells have a chance to grant 500 Haste for 10 sec.'
+      },
+      {
+        trigger_type: { type: 'ON_USE' },
+        spell: { id: 456, name: 'Blooming Pulse' },
+      },
+    ],
+  });
+
+  assert.deepEqual(effects, [
+    {
+      trigger: 'Equip',
+      text: 'Your healing spells have a chance to grant 500 Haste for 10 sec.',
+      spellId: 123,
+    },
+    {
+      trigger: 'Use',
+      text: 'Blooming Pulse',
+      spellId: 456,
+    },
+  ]);
+});
+
+test('deduplicates Blizzard item effects exposed in multiple payload sections', () => {
+  const effect = {
+    trigger_type: { type: 'ON_EQUIP' },
+    spell: { id: 999, name: 'Shared Effect' },
+    description: 'Gain Mastery after casting a major cooldown.',
+  };
+  const effects = normaliseItemEffects({
+    spells: [effect],
+    preview_item: { spells: [effect] },
+  });
+  assert.equal(effects.length, 1);
 });

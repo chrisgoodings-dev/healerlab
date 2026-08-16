@@ -186,6 +186,87 @@ export function normaliseItemSecondaryStats(item = {}) {
   return result;
 }
 
+
+function itemText(value) {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return '';
+  if (typeof value.value === 'string') return value.value;
+  if (typeof value.name === 'string') return value.name;
+  for (const locale of ['en_GB', 'en_US']) {
+    if (typeof value[locale] === 'string') return value[locale];
+  }
+  return '';
+}
+
+function cleanItemText(value) {
+  return itemText(value)
+    .replace(/\|c[0-9a-fA-F]{8}/g, '')
+    .replace(/\|r/g, '')
+    .replace(/\|n/g, ' ')
+    .replace(/<br\s*\/?\s*>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function effectTriggerLabel(entry = {}) {
+  const raw = statTypeKey(
+    entry?.trigger_type?.type ||
+    entry?.trigger_type?.name ||
+    entry?.trigger?.type ||
+    entry?.trigger?.name ||
+    entry?.effect_type?.type ||
+    entry?.effect_type?.name ||
+    entry?.type?.type ||
+    entry?.type?.name ||
+    ''
+  );
+
+  if (/USE/.test(raw)) return 'Use';
+  if (/EQUIP/.test(raw)) return 'Equip';
+  if (/CHANCE|PROC|HIT/.test(raw)) return 'Chance on hit';
+  if (/LEARN/.test(raw)) return 'Learn';
+  return raw ? raw.toLowerCase().replaceAll('_', ' ').replace(/^./, (value) => value.toUpperCase()) : '';
+}
+
+export function normaliseItemEffects(item = {}) {
+  const sources = [
+    item?.spells,
+    item?.effects,
+    item?.preview_item?.spells,
+    item?.preview_item?.effects,
+  ].filter(Array.isArray);
+  const effects = [];
+  const seen = new Set();
+
+  for (const source of sources) {
+    for (const entry of source) {
+      const trigger = effectTriggerLabel(entry);
+      const description = cleanItemText(
+        entry?.description ||
+        entry?.spell?.description ||
+        entry?.effect?.description ||
+        entry?.display_string ||
+        entry?.displayString
+      );
+      const spellName = cleanItemText(entry?.spell?.name || entry?.name);
+      const text = description || spellName;
+      if (!text) continue;
+
+      const key = `${trigger}|${text}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      effects.push({
+        trigger,
+        text,
+        spellId: numericValue(entry?.spell?.id) || null,
+      });
+    }
+  }
+
+  return effects;
+}
+
 function slotFromType(type, counters) {
   const normalized = String(type || '').trim().toUpperCase();
 
@@ -588,8 +669,18 @@ export async function fetchBlizzardItem({ region, itemId, env }) {
     itemClass: item?.item_class?.name || null,
     itemSubclass: item?.item_subclass?.name || null,
     inventoryType: item?.inventory_type?.type || item?.inventory_type?.name || null,
-    requiredLevel: numericValue(item?.required_level) || null,
+    itemLevel: numericValue(
+      item?.level?.value,
+      item?.level,
+      item?.preview_item?.level?.value,
+      item?.preview_item?.level,
+      item?.item_level?.value,
+      item?.item_level
+    ) || null,
+    requiredLevel: numericValue(item?.required_level?.value, item?.required_level) || null,
     secondaryStats: normaliseItemSecondaryStats(item),
+    effects: normaliseItemEffects(item),
+    description: cleanItemText(item?.description || item?.preview_item?.description) || null,
     iconUrl: iconFromMedia(media),
   };
 }

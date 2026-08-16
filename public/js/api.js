@@ -53,3 +53,21 @@ export async function fetchOfficialSeasonLoot(region, { signal } = {}) {
     total: SEASON_2_DUNGEONS.length,
   };
 }
+
+export async function fetchItemDetails(region, itemId, { signal } = {}) {
+  const id = Number(itemId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid item ID.');
+
+  const query = new URLSearchParams({ region, id: String(id) });
+  const response = await fetch(`/api/blizzard/item?${query.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload?.message || `Item lookup failed (${response.status}).`);
+  }
+
+  return payload;
+}
