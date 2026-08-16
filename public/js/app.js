@@ -1,4 +1,4 @@
-import { fetchCharacter } from './api.js';
+import { fetchCharacter, fetchOfficialSeasonLoot } from './api.js';
 import { buildAnalysis } from './analysis.js';
 import { demoCharacter } from './demo-data.js';
 
@@ -102,6 +102,10 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
 
   versionElement.textContent = `Season 2 | +${keyLevel} drops ${dropItemLevel}`;
 
+  const instanceIcon = (dungeon, className = 'loot-instance-icon') => dungeon?.instanceIconUrl
+    ? `<img class="${className}" src="${escapeHtml(dungeon.instanceIconUrl)}" alt="" loading="lazy" />`
+    : `<span class="${className} loot-instance-icon-fallback" aria-hidden="true">${escapeHtml((dungeon?.shortName || '?').slice(0, 2))}</span>`;
+
   if (!best || best.gearOpportunity <= 0) {
     bestContainer.className = 'best-loot-farm';
     bestContainer.innerHTML = `
@@ -114,6 +118,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
     ranking.innerHTML = dungeons.map((dungeon, index) => `
       <div class="loot-dungeon-row">
         <span class="loot-rank">${index + 1}</span>
+        ${instanceIcon(dungeon, 'loot-instance-icon-small')}
         <div><strong>${escapeHtml(dungeon.name)}</strong><span>0 weak-slot upgrades at item level ${dungeon.dropItemLevel}</span></div>
         <strong>0</strong>
       </div>
@@ -126,20 +131,34 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
     .map((match) => `${match.targetLabel} +${match.upgradeDelta}`)
     .join(', ');
 
-  const topItems = best.matches.slice(0, 5).map((match) => `
-    <li>
-      <strong>${escapeHtml(match.itemName)}</strong>
-      <span>${escapeHtml(match.targetLabel)} | ${match.currentItemLevel} -> ${match.dropItemLevel} (+${match.upgradeDelta} ilvl)</span>
-    </li>
-  `).join('');
+  const topItems = best.matches.slice(0, 5).map((match) => {
+    const gearIcon = match.currentIconUrl
+      ? `<img class="loot-gear-icon" src="${escapeHtml(match.currentIconUrl)}" alt="" loading="lazy" />`
+      : '<span class="loot-gear-icon loot-gear-icon-fallback" aria-hidden="true">+</span>';
+    const official = match.itemId ? ` | Blizzard item ${match.itemId}` : '';
+
+    return `
+      <li>
+        ${gearIcon}
+        <div>
+          <strong>${escapeHtml(match.itemName)}</strong>
+          <span>${escapeHtml(match.targetLabel)} | ${match.currentItemLevel} -> ${match.dropItemLevel} (+${match.upgradeDelta} ilvl)${official}</span>
+        </div>
+      </li>
+    `;
+  }).join('');
 
   bestContainer.className = 'best-loot-farm';
   bestContainer.innerHTML = `
-    <div class="loot-best-copy">
-      <span class="loot-best-label">BEST GEAR FARM AT +${keyLevel}</span>
-      <h4>${escapeHtml(best.name)}</h4>
-      <p>Targets ${best.matchedSlots} weak slot${best.matchedSlots === 1 ? '' : 's'}${targetSummary ? `: ${escapeHtml(targetSummary)}` : ''}.</p>
-      <ul class="loot-match-list">${topItems}</ul>
+    <div class="loot-instance-feature">
+      ${instanceIcon(best)}
+      <div class="loot-best-copy">
+        <span class="loot-best-label">BEST GEAR FARM AT +${keyLevel}</span>
+        <h4>${escapeHtml(best.name)}</h4>
+        <p>Targets ${best.matchedSlots} weak slot${best.matchedSlots === 1 ? '' : 's'}${targetSummary ? `: ${escapeHtml(targetSummary)}` : ''}.</p>
+        <small class="loot-official-source">${best.officialSource ? 'Blizzard Journal instance + item IDs' : 'Curated fallback identity data'}</small>
+        <ul class="loot-match-list">${topItems}</ul>
+      </div>
     </div>
     <div class="loot-score"><strong>${Math.round(best.gearOpportunity)}</strong><span>/ 100</span></div>
   `;
@@ -147,15 +166,17 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
   ranking.innerHTML = dungeons.map((dungeon, index) => `
     <div class="loot-dungeon-row">
       <span class="loot-rank">${index + 1}</span>
+      ${instanceIcon(dungeon, 'loot-instance-icon-small')}
       <div>
         <strong>${escapeHtml(dungeon.name)}</strong>
-        <span>${dungeon.matchedSlots} weak-slot upgrade${dungeon.matchedSlots === 1 ? '' : 's'} | ${dungeon.matchingDrops} matching drop${dungeon.matchingDrops === 1 ? '' : 's'}</span>
+        <span>${dungeon.matchedSlots} weak-slot upgrade${dungeon.matchedSlots === 1 ? '' : 's'} | ${dungeon.matchingDrops} matching drop${dungeon.matchingDrops === 1 ? '' : 's'}${dungeon.journalInstanceId ? ` | Journal ${dungeon.journalInstanceId}` : ''}</span>
       </div>
       <strong>${Math.round(dungeon.gearOpportunity)}</strong>
     </div>
   `).join('');
 
-  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. Score uses actual +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot coverage and item-level gain. It does not model drop probability, secondary-stat value, embellishments, or Best-in-Slot effects.`;
+  const officialCount = dungeons.filter((dungeon) => dungeon.officialSource).length;
+  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeon identities were enriched from the Blizzard Journal API. The planner keeps curated healer eligibility/slot rules, but uses Blizzard Journal instance IDs, item IDs, names and instance media when available. Score uses +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot coverage and item-level gain.`;
 }
 
 function renderRecommendations(recommendations) {
@@ -180,9 +201,13 @@ function renderCharacter(character, options) {
   $('#character-meta').textContent = [character.realm, character.class, character.active_spec_name].filter(Boolean).join(' | ');
   const apiSourceLabel = $('#api-source-label');
   if (apiSourceLabel) {
-    apiSourceLabel.textContent = character?.healerlab_sources?.blizzard === 'ok'
-      ? 'Raider.IO + Blizzard'
-      : 'Raider.IO';
+    const equipmentOk = character?.healerlab_sources?.blizzard === 'ok';
+    const journalOk = character?.healerlab_sources?.blizzard_journal === 'ok';
+    apiSourceLabel.textContent = equipmentOk && journalOk
+      ? 'Raider.IO + Blizzard Equipment + Journal'
+      : equipmentOk
+        ? 'Raider.IO + Blizzard Equipment'
+        : 'Raider.IO';
   }
   $('#item-level').textContent = itemLevel ? itemLevel.toFixed(1) : '-';
   $('#mythic-score').textContent = score ? Math.round(score).toLocaleString() : '0';
@@ -227,7 +252,7 @@ function renderCharacter(character, options) {
   }[analysis.focus] || 'Balanced progression';
 
   const farmName = analysis.bestGearFarm?.gearOpportunity > 0 ? analysis.bestGearFarm.name : 'no current farm';
-  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. The gear farm planner matched those weak slots against the curated Midnight Season 2 healer loot pool at +${analysis.farmKeyLevel} (item level ${analysis.farmDropItemLevel}); its current top result is ${farmName}. Opportunity scores are normalised within their category. Equipment data source: ${character?.healerlab_sources?.blizzard === 'ok' ? 'official Blizzard Character Equipment API' : 'Raider.IO fallback'}. Cosmetic slots are excluded. This is an item-level progression heuristic, not a Best-in-Slot or healing-throughput simulation.`;
+  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. The gear farm planner matched those weak slots against the Midnight Season 2 healer loot pool, enriched with Blizzard Journal instance and item identity data when available at +${analysis.farmKeyLevel} (item level ${analysis.farmDropItemLevel}); its current top result is ${farmName}. Opportunity scores are normalised within their category. Equipment data source: ${character?.healerlab_sources?.blizzard === 'ok' ? 'official Blizzard Character Equipment API' : 'Raider.IO fallback'}. Cosmetic slots are excluded. This is an item-level progression heuristic, not a Best-in-Slot or healing-throughput simulation.`;
 }
 
 function escapeHtml(value) {
@@ -260,11 +285,21 @@ async function analyseLiveCharacter(event) {
   setState('loading', 'Contacting Raider.IO and Blizzard through the HealerLab API...');
 
   try {
-    const character = await fetchCharacter({
-      region: $('#region').value,
-      realm: clean($('#realm').value),
-      character: clean($('#character').value),
-    }, { signal: activeController.signal });
+    const region = $('#region').value;
+    const [character, officialLoot] = await Promise.all([
+      fetchCharacter({
+        region,
+        realm: clean($('#realm').value),
+        character: clean($('#character').value),
+      }, { signal: activeController.signal }),
+      fetchOfficialSeasonLoot(region, { signal: activeController.signal }),
+    ]);
+
+    character.official_dungeon_loot = officialLoot.dungeons;
+    character.healerlab_sources = {
+      ...(character.healerlab_sources || {}),
+      blizzard_journal: officialLoot.resolved > 0 ? 'ok' : 'fallback',
+    };
 
     renderCharacter(character, currentOptions());
     const sourceName = character?.healerlab_sources?.blizzard === 'ok'

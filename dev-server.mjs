@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { onRequestGet as getCharacter } from './functions/api/character.js';
 import { onRequestGet as getBlizzardItem } from './functions/api/blizzard-item.js';
+import { onRequestGet as getBlizzardDungeon } from './functions/api/blizzard-dungeon.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, process.env.SERVE_DIR || 'public');
@@ -103,6 +104,10 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/blizzard/item') {
     return runApiHandler(req, res, getBlizzardItem);
+  }
+
+  if (url.pathname === '/api/blizzard/dungeon') {
+    return runApiHandler(req, res, getBlizzardDungeon);
   }
 
   const relative = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));

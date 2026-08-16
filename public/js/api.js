@@ -14,3 +14,42 @@ export async function fetchCharacter({ region, realm, character }, { signal } = 
 
   return payload;
 }
+
+
+const SEASON_2_DUNGEONS = [
+  'Altar of Fangs',
+  'Murder Row',
+  'Den of Nalorakk',
+  'The Blinding Vale',
+  'Voidscar Arena',
+  'Ruby Life Pools',
+  "Kings' Rest",
+  'Temple of Sethraliss',
+];
+
+async function fetchOfficialDungeon(region, name, signal) {
+  const query = new URLSearchParams({ region, name });
+  const response = await fetch(`/api/blizzard/dungeon?${query.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+
+  if (!response.ok) return null;
+  return response.json().catch(() => null);
+}
+
+export async function fetchOfficialSeasonLoot(region, { signal } = {}) {
+  const results = await Promise.allSettled(
+    SEASON_2_DUNGEONS.map((name) => fetchOfficialDungeon(region, name, signal))
+  );
+
+  const dungeons = results
+    .filter((result) => result.status === 'fulfilled' && result.value)
+    .map((result) => result.value);
+
+  return {
+    dungeons,
+    resolved: dungeons.length,
+    total: SEASON_2_DUNGEONS.length,
+  };
+}

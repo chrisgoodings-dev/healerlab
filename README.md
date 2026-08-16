@@ -114,3 +114,10 @@ The public client ID is already configured by the project. Never commit `.dev.va
 ## Academic note
 
 Keep a clear distinction between external data and your own processing in the report. Raider.IO supplies observations. HealerLab's JavaScript performs the validation, transformation, ranking and recommendation logic.
+
+
+## Blizzard Journal loot enrichment
+
+HealerLab now resolves the Midnight Season 2 dungeon identities through Blizzard's Journal API. Each dungeon is requested independently so a single Worker invocation only makes a small number of Blizzard subrequests. The Journal response supplies official journal instance IDs, encounter loot item IDs/names and instance media. These official identities are merged into the curated healer eligibility and slot model used by the gear planner.
+
+This is intentionally hybrid: Blizzard is authoritative for identity/media, while the curated model still supplies healer-specific armor/weapon/trinket eligibility where the Journal response alone is not sufficient to make a safe recommendation.

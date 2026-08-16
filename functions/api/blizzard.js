@@ -202,7 +202,7 @@ async function getAccessToken(env, forceRefresh = false) {
   return tokenCache.token;
 }
 
-async function blizzardGet(path, { region, namespace, locale, env, retry = true }) {
+export async function blizzardGet(path, { region, namespace, locale, env, retry = true }) {
   const config = REGION_CONFIG[region];
   if (!config) {
     const error = new Error('Unsupported Blizzard API region.');

@@ -1,5 +1,6 @@
 import { onRequestGet as getCharacter } from './functions/api/character.js';
 import { onRequestGet as getBlizzardItem } from './functions/api/blizzard-item.js';
+import { onRequestGet as getBlizzardDungeon } from './functions/api/blizzard-dungeon.js';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -29,6 +30,14 @@ export default {
       }
 
       return getBlizzardItem({ request, env });
+    }
+
+    if (url.pathname === '/api/blizzard/dungeon') {
+      if (request.method !== 'GET') {
+        return json({ message: 'Method not allowed.' }, 405);
+      }
+
+      return getBlizzardDungeon({ request, env });
     }
 
     if (url.pathname.startsWith('/api/')) {

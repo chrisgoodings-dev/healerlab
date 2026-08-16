@@ -1,4 +1,5 @@
 import { CLASS_ARMOR, HEALER_CLASSES, LOOT_DATA_VERSION, SEASON_2_DUNGEONS, endOfDungeonItemLevel } from './loot-data.js';
+import { enrichCuratedDungeonsWithOfficial } from './official-loot.js';
 
 const SLOT_LABELS = {
   head: 'Head',
@@ -171,7 +172,12 @@ function itemIsUsable(character, item) {
 }
 
 export function usableLootForCharacter(character) {
-  return SEASON_2_DUNGEONS.map((dungeon) => ({
+  const enriched = enrichCuratedDungeonsWithOfficial(
+    SEASON_2_DUNGEONS,
+    character?.official_dungeon_loot
+  );
+
+  return enriched.map((dungeon) => ({
     ...dungeon,
     items: dungeon.items.filter((item) => itemIsUsable(character, item)),
   }));
@@ -212,10 +218,15 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
 
         return {
           itemName: item.name,
+          itemId: Number(item.itemId) || null,
+          officialSource: item.officialSource === true,
+          encounterName: item.encounterName || null,
           lootSlot: item.slot,
           targetSlot: target.slot,
           targetLabel: target.label,
           currentItem: target.name,
+          currentItemId: target.itemId || null,
+          currentIconUrl: target.iconUrl || null,
           currentItemLevel: target.itemLevel,
           baseline: target.baseline,
           deficit: target.belowAverage,
@@ -259,6 +270,9 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
     return {
       name: dungeon.name,
       shortName: dungeon.shortName,
+      journalInstanceId: dungeon.journalInstanceId || null,
+      instanceIconUrl: dungeon.instanceIconUrl || null,
+      officialSource: dungeon.officialSource === true,
       rawGearOpportunity,
       gearOpportunity: 0,
       matchedSlots: slotMatches.length,

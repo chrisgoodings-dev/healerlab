@@ -299,3 +299,20 @@ input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0
   font-style: normal;
   opacity: .86;
 }
+
+
+/* Blizzard Journal dungeon and gear media */
+.loot-instance-feature { min-width: 0; display: flex; gap: 16px; align-items: flex-start; }
+.loot-instance-icon, .loot-instance-icon-small { object-fit: cover; border: 1px solid var(--line-strong); background: rgba(132,240,193,.08); flex: 0 0 auto; }
+.loot-instance-icon { width: 70px; height: 70px; border-radius: 15px; }
+.loot-instance-icon-small { width: 34px; height: 34px; border-radius: 9px; }
+.loot-instance-icon-fallback { display: grid; place-items: center; color: var(--accent); font-size: .62rem; font-weight: 900; }
+.loot-official-source { display: block; margin-top: 7px; color: var(--accent); font-size: .65rem; }
+.loot-match-list li { grid-template-columns: 30px 1fr; align-items: center; }
+.loot-match-list li > div { min-width: 0; display: grid; gap: 2px; }
+.loot-gear-icon { width: 28px; height: 28px; border-radius: 7px; object-fit: cover; border: 1px solid var(--line-strong); background: rgba(132,240,193,.08); }
+.loot-gear-icon-fallback { display: grid; place-items: center; color: var(--accent); font-weight: 900; }
+.loot-dungeon-row { grid-template-columns: 34px 34px 1fr auto; }
+@media (max-width: 520px) {
+  .loot-instance-icon { width: 54px; height: 54px; }
+}
