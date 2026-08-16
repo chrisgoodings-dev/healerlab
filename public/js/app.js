@@ -6,6 +6,7 @@ import { setupItemTooltips } from './item-tooltips.js';
 import { getHealerPlaybook } from './healer-priority.js';
 import { MIDNIGHT_SEASON_2 } from './season-12-1.js';
 import { usableWowheadGuide, wowheadSourceSummary } from './wowhead-bis.js';
+import { dungeonPriorityWeights, rankDungeonProgression } from './dungeon-priority.js';
 const $ = (selector) => document.querySelector(selector);
 const form = $('#character-form');
 const formMessage = $('#form-message');
@@ -117,27 +118,37 @@ function renderRaid(raids, wowheadBis = null) {
   }).join('');
 }
 
-function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null, wowheadBis = null) {
+function renderDungeons(
+  dungeons,
+  lootDungeons = [],
+  seasonStatus = null,
+  wowheadBis = null,
+  focus = 'balanced'
+) {
   const container = $('#dungeon-list');
-  const normalise = (value) => clean(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const lootByName = new Map();
   const guide = wowheadSourceSummary(wowheadBis);
-
-  for (const dungeon of lootDungeons || []) {
-    lootByName.set(normalise(dungeon.name), dungeon);
-    lootByName.set(normalise(dungeon.shortName), dungeon);
-  }
+  const weights = dungeonPriorityWeights(focus);
+  const rankedDungeons = rankDungeonProgression(dungeons, lootDungeons, { focus });
+  const scorePct = Math.round(weights.score * 100);
+  const gearPct = Math.round(weights.gear * 100);
 
   const seasonNotice = seasonStatus && !seasonStatus.mythicPlusOpen
-    ? `<div class="season-notice"><strong>Patch 12.1 pool loaded.</strong> Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}.</div>`
-    : `<div class="season-notice live"><strong>Midnight Season 2 is active.</strong> Current-season score, Blizzard loot and verified Wowhead BiS sources are combined.</div>`;
+    ? `<div class="season-notice"><strong>Patch 12.1 pool loaded.</strong> Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}. Ordering is ${scorePct}% score opportunity / ${gearPct}% gear opportunity.</div>`
+    : `<div class="season-notice live"><strong>Priority order: ${escapeHtml(weights.label)}.</strong> Dungeons are ranked by ${scorePct}% score opportunity / ${gearPct}% gear opportunity. BiS value already feeds the gear score.</div>`;
 
-  const cards = dungeons.map((run, index) => {
-    const loot = lootByName.get(normalise(run.dungeon)) || lootByName.get(normalise(run.shortName));
-    const gearOpportunity = Math.round(Number(loot?.gearOpportunity) || 0);
-    const scoreOpportunity = Math.round(Number(run.opportunity) || 0);
-    const combined = Math.round((scoreOpportunity * 0.55) + (gearOpportunity * 0.45));
-    const guideEntry = guide.dungeons.get(clean(run.dungeon).toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim());
+  const cards = rankedDungeons.map((entry, index) => {
+    const run = entry.run;
+    const loot = entry.loot;
+    const gearOpportunity = Math.round(entry.gearOpportunity);
+    const scoreOpportunity = Math.round(entry.scoreOpportunity);
+    const combined = Math.round(entry.combinedOpportunity);
+    const guideEntry = guide.dungeons.get(
+      clean(run.dungeon)
+        .toLowerCase()
+        .replace(/[\u2019']/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+    );
     const wowheadCount = Number(loot?.wowheadBisTargets || guideEntry?.bis || 0);
     const mplusCount = Number(loot?.wowheadMythicTargets || guideEntry?.mythicPlus || 0);
     const guideBadge = wowheadCount > 0
@@ -158,22 +169,38 @@ function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null, wowhea
       ? `<a class="encounter-link" href="${escapeHtml(run.url)}" target="_blank" rel="noreferrer">Open run</a>`
       : '<span class="encounter-link muted">Current-season baseline needed</span>';
 
-    const valueLabel = !run.hasRun ? 'OPEN TARGET' : combined >= 70 ? 'HIGH VALUE' : combined >= 35 ? 'USEFUL' : 'STABLE';
+    const valueLabel = !run.hasRun && scoreOpportunity >= 70
+      ? 'OPEN SCORE TARGET'
+      : combined >= 75
+        ? 'TOP PRIORITY'
+        : combined >= 55
+          ? 'HIGH VALUE'
+          : combined >= 35
+            ? 'USEFUL'
+            : 'STABLE';
 
     return `
-      <article class="encounter-card${index === 0 ? ' recommended' : ''}${run.hasRun ? '' : ' unrun'}${guideBadge ? ' bis-source-highlight' : ''}">
-        <div class="encounter-card-top">${icon}<div class="encounter-rank">#${index + 1}</div></div>
+      <article class="encounter-card${index === 0 ? ' recommended combined-priority-top' : ''}${run.hasRun ? '' : ' unrun'}${guideBadge ? ' bis-source-highlight' : ''}">
+        <div class="encounter-card-top">
+          ${icon}
+          <div class="encounter-rank">#${index + 1}</div>
+        </div>
         <div class="encounter-copy">
           <span class="encounter-code">PATCH 12.1 | ${escapeHtml(run.shortName)}</span>
           <h4>${escapeHtml(run.dungeon)}</h4>
           <p>${escapeHtml(progressLine)}</p>
+          <span class="encounter-driver">${escapeHtml(entry.driver)}</span>
           ${guideBadge}
         </div>
-        <div class="encounter-metrics">
-          <span><small>Score opportunity</small><strong>${scoreOpportunity}</strong></span>
-          <span><small>Gear opportunity</small><strong>${gearOpportunity}</strong></span>
+        <div class="encounter-metrics encounter-metrics-three">
+          <span><small>Score</small><strong>${scoreOpportunity}</strong></span>
+          <span><small>Gear</small><strong>${gearOpportunity}</strong></span>
+          <span class="encounter-overall"><small>Overall</small><strong>${combined}</strong></span>
         </div>
-        <div class="encounter-footer"><span class="encounter-priority">${valueLabel}</span>${runLink}</div>
+        <div class="encounter-footer">
+          <span class="encounter-priority">${valueLabel}</span>
+          ${runLink}
+        </div>
       </article>
     `;
   }).join('');
@@ -661,7 +688,7 @@ function renderCharacter(character, options) {
   profileLink.href = character.profile_url || 'https://raider.io/';
 
   renderRaid(analysis.raids, analysis.wowheadBis);
-  renderDungeons(analysis.dungeons, analysis.lootDungeons, analysis.season, analysis.wowheadBis);
+  renderDungeons(analysis.dungeons, analysis.lootDungeons, analysis.season, analysis.wowheadBis, analysis.focus);
   renderGear(analysis.weakGear, character.region || $('#region').value);
   renderStatAlignment(analysis.statAlignment);
   renderBisPlan(analysis.bisProfile, analysis.wowheadBis);
