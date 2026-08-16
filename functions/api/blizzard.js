@@ -187,6 +187,21 @@ export function normaliseItemSecondaryStats(item = {}) {
 }
 
 
+export function normaliseItemSecondaryStatTypes(item = {}) {
+  const previewStats = Array.isArray(item?.preview_item?.stats) ? item.preview_item.stats : null;
+  const stats = previewStats || (Array.isArray(item?.stats) ? item.stats : []);
+  const result = [];
+
+  for (const entry of stats) {
+    const type = statTypeKey(entry?.type?.type || entry?.type?.name || entry?.type);
+    const key = ITEM_SECONDARY_STAT_TYPES[type];
+    if (!key || result.includes(key)) continue;
+    result.push(key);
+  }
+
+  return result;
+}
+
 function itemText(value) {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return '';
@@ -632,7 +647,13 @@ export async function fetchBlizzardItemStats({ region, itemId, env }) {
 
   const result = {
     id,
+    name: item?.name || null,
+    itemClass: item?.item_class?.name || item?.item_class?.type || null,
+    itemSubclass: item?.item_subclass?.name || item?.item_subclass?.type || null,
+    inventoryType: item?.inventory_type?.type || item?.inventory_type?.name || null,
     secondaryStats: normaliseItemSecondaryStats(item),
+    secondaryStatTypes: normaliseItemSecondaryStatTypes(item),
+    effects: normaliseItemEffects(item),
   };
 
   if (itemStatsCache.size > 500) itemStatsCache.clear();
@@ -679,6 +700,7 @@ export async function fetchBlizzardItem({ region, itemId, env }) {
     ) || null,
     requiredLevel: numericValue(item?.required_level?.value, item?.required_level) || null,
     secondaryStats: normaliseItemSecondaryStats(item),
+    secondaryStatTypes: normaliseItemSecondaryStatTypes(item),
     effects: normaliseItemEffects(item),
     description: cleanItemText(item?.description || item?.preview_item?.description) || null,
     iconUrl: iconFromMedia(media),

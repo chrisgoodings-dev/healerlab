@@ -400,7 +400,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel, region 
         <span class="loot-best-label">BEST GEAR FARM AT +${keyLevel}</span>
         <h4>${escapeHtml(best.name)}</h4>
         <p>Targets ${best.matchedSlots} weak slot${best.matchedSlots === 1 ? '' : 's'}${targetSummary ? `: ${escapeHtml(targetSummary)}` : ''}.</p>
-        <small class="loot-official-source">${best.officialSource ? 'Blizzard Journal instance + item IDs' : 'Curated fallback identity data'}</small>
+        <small class="loot-official-source">${best.officialSource ? 'Blizzard Journal + Item API metadata' : 'Curated fallback identity data'}</small>
         <ul class="loot-match-list">${topItems}</ul>
       </div>
     </div>
@@ -421,7 +421,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel, region 
 
   const officialCount = dungeons.filter((dungeon) => dungeon.officialSource).length;
   const statAdjusted = dungeons.some((dungeon) => dungeon.statAlignmentAvailable);
-  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeon identities were enriched from the Blizzard Journal API. For each weak slot, HealerLab compares every eligible drop and recommends only the candidate with the strongest combined item-level and stat-balance replacement value. Score uses +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot severity and coverage${statAdjusted ? ', with secondary-stat replacement value capped to a +/-25% modifier so item level remains dominant' : ''}. Curated healer eligibility remains a safety layer.`;
+  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeons were resolved through Blizzard Journal data. Blizzard Item metadata now supplies slot, armour class and secondary-stat composition, so live Journal drops that are not in the curated table can still be analysed. For each usable slot HealerLab filters by class/armour, compares candidate stat composition against the selected Raid/M+ priority and then folds Personal BiS into the dungeon score. +${keyLevel} end-of-dungeon item level is ${dropItemLevel}.${statAdjusted ? ' Live whole-character stat alignment is used where available.' : ' When scaled ratings are unavailable, the stat-priority order is used as the fallback.'}`;
 }
 
 function renderRecommendations(recommendations) {
@@ -548,12 +548,12 @@ function renderBisPlan(profile) {
 
   if (!profile?.available) {
     score.textContent = '-';
-    container.innerHTML = '<p class="empty-state">Personal dungeon BiS needs live item secondary-stat data and a valid character stat profile.</p>';
+    container.innerHTML = '<p class="empty-state">No rankable Blizzard dungeon items were returned. HealerLab now accepts either scaled secondary-stat ratings or Blizzard stat-type composition.</p>';
     note.textContent = profile?.note || '';
     return;
   }
 
-  score.textContent = `${profile.rankedSlots} slots`;
+  score.textContent = `${profile.rankedSlots} slots | Blizzard`;
   const labelBySlot = {
     head: 'Head', neck: 'Neck', shoulder: 'Shoulders', back: 'Back',
     chest: 'Chest', wrist: 'Wrists', hands: 'Hands', waist: 'Waist',
@@ -568,7 +568,7 @@ function renderBisPlan(profile) {
         <span class="bis-slot">${escapeHtml(labelBySlot[item.slot] || item.slot)}</span>
         <div>
           <strong>${escapeHtml(item.itemName)}</strong>
-          <small>${escapeHtml(item.dungeonName)} | ${escapeHtml(item.fitLabel)}${item.alignmentGain ? ` | ${item.alignmentGain >= 0 ? '+' : ''}${item.alignmentGain.toFixed(1)} alignment` : ''}</small>
+          <small>${escapeHtml(item.dungeonName)} | ${escapeHtml(item.fitLabel)}${item.alignmentGain ? ` | ${item.alignmentGain >= 0 ? '+' : ''}${item.alignmentGain.toFixed(1)} alignment` : ''} | ${escapeHtml(item.statDataSource || 'Blizzard')}</small>
         </div>
         <span class="bis-badge">BiS</span>
       </div>

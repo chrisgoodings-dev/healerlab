@@ -104,9 +104,10 @@ test('dungeon integration declares a scoped BiS profile before using BiS matches
   assert.ok(functionEnd > functionStart, 'could not isolate dungeonLootOpportunities');
 
   const body = source.slice(functionStart, functionEnd);
-  const declaration = body.indexOf(
-    'const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment });'
+  const declarationMatch = body.match(
+    /const\s+bisProfile\s*=\s*buildPersonalDungeonBis\(character,\s*usableLoot,\s*\{[^}]*statAlignment[^}]*\}\s*\);/
   );
+  const declaration = declarationMatch?.index ?? -1;
   const firstUse = body.indexOf('getBisMatch(item, target.slot, bisProfile)');
 
   assert.ok(declaration >= 0, 'dungeonLootOpportunities does not declare bisProfile');

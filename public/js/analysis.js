@@ -3,7 +3,7 @@ import { enrichCuratedDungeonsWithOfficial } from './official-loot.js';
 import { buildStatAlignment, replacementStatFit } from './stat-alignment.js';
 
 import { MIDNIGHT_SEASON_2, currentSeasonState, isMidnightSeason2ScoreEntry, normaliseContentName, seasonDungeonFor } from './season-12-1.js';
-import { buildPersonalDungeonBis, getBisMatch, mergeBisGearPriorities } from './bis.js';
+import { buildPersonalDungeonBis, effectiveItemStats, getBisMatch, mergeBisGearPriorities } from './bis.js';
 const SLOT_LABELS = {
   head: 'Head',
   neck: 'Neck',
@@ -253,17 +253,58 @@ function canonicalClass(character) {
   return HEALER_CLASSES.includes(name) ? name : name;
 }
 
+const HEALER_WEAPON_TYPES = Object.freeze({
+  Druid: new Set(['dagger', 'fist weapon', 'one handed mace', 'mace', 'staff', 'polearm']),
+  Evoker: new Set(['dagger', 'fist weapon', 'one handed axe', 'one handed mace', 'one handed sword', 'staff']),
+  Monk: new Set(['fist weapon', 'one handed axe', 'one handed mace', 'one handed sword', 'staff', 'polearm']),
+  Paladin: new Set(['one handed axe', 'one handed mace', 'one handed sword', 'shield']),
+  Priest: new Set(['dagger', 'one handed mace', 'mace', 'staff', 'wand', 'off hand', 'held in off hand']),
+  Shaman: new Set(['fist weapon', 'one handed axe', 'one handed mace', 'mace', 'dagger', 'staff', 'shield']),
+});
+
+function normaliseWeaponType(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/s+/g, ' ');
+
+  const aliases = {
+    'daggers': 'dagger',
+    'fist weapons': 'fist weapon',
+    'one handed axes': 'one handed axe',
+    'one handed maces': 'one handed mace',
+    'one handed swords': 'one handed sword',
+    'staves': 'staff',
+    'polearms': 'polearm',
+    'shields': 'shield',
+    'wands': 'wand',
+  };
+
+  return aliases[normalized] || normalized;
+}
+
 function itemIsUsable(character, item) {
   const className = canonicalClass(character);
+
+  // Curated class restrictions remain the strongest signal for weapons and
+  // unusual items where we already have a known-safe compatibility list.
+  if (Array.isArray(item.classes)) {
+    return item.classes.includes(className);
+  }
 
   if (item.armor) {
     return CLASS_ARMOR[className] === item.armor;
   }
 
-  if (Array.isArray(item.classes)) {
-    return item.classes.includes(className);
+  if (item.weaponType) {
+    const allowed = HEALER_WEAPON_TYPES[className];
+    const type = normaliseWeaponType(item.weaponType);
+    return Boolean(allowed && allowed.has(type));
   }
 
+  // Jewellery, cloaks and other armour-agnostic slots are usable unless a
+  // stronger restriction above says otherwise.
   return true;
 }
 
@@ -305,7 +346,7 @@ export function buildBisAwareGearPriorities(
   const gear = normaliseGear(character);
   const statAlignment = buildStatAlignment(character, { context: statContext });
   const usableLoot = usableLootForCharacter(character);
-  const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment });
+  const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment, statContext });
   const dropItemLevel = endOfDungeonItemLevel(keyLevel);
 
   return mergeBisGearPriorities(weak, gear, bisProfile, {
@@ -318,7 +359,7 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
   const weakGear = gearWeaknesses(character, 16);
   const statAlignment = buildStatAlignment(character, { context: statContext });
   const usableLoot = usableLootForCharacter(character);
-  const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment });
+  const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment, statContext });
   const farmKeyLevel = Math.max(2, Math.floor(Number(keyLevel) || 10));
   const dropItemLevel = endOfDungeonItemLevel(farmKeyLevel);
   const farmTargets = mergeBisGearPriorities(
@@ -334,18 +375,19 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
         const target = bestTargetForLootItem(item, farmTargets);
         if (!target) return null;
 
-        const upgradeDelta = dropItemLevel - target.itemLevel;
-        const sameLevelBisSidegrade = upgradeDelta === 0
-          && bisMatch.exact
-          && Number(statFit.alignmentGain) >= 0.75;
-        if (upgradeDelta < 0 || (upgradeDelta === 0 && !sameLevelBisSidegrade)) return null;
-
+        const candidateStats = effectiveItemStats(item);
         const statFit = replacementStatFit(
-          item.secondaryStats,
+          candidateStats,
           target.secondaryStats,
           statAlignment
         );
         const bisMatch = getBisMatch(item, target.slot, bisProfile);
+        const upgradeDelta = dropItemLevel - target.itemLevel;
+        const sameLevelBisSidegrade = upgradeDelta === 0
+          && bisMatch.exact
+          && statFit.replacementAvailable
+          && Number(statFit.alignmentGain) >= 0.75;
+        if (upgradeDelta < 0 || (upgradeDelta === 0 && !sameLevelBisSidegrade)) return null;
         const baseUpgradeValue = upgradeDelta > 0
           ? upgradeDelta * (0.5 + (target.priority / 200))
           : Math.max(2, Number(statFit.alignmentGain) * 4);
@@ -356,7 +398,8 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
           itemId: Number(item.itemId) || null,
           officialSource: item.officialSource === true,
           encounterName: item.encounterName || null,
-          itemSecondaryStats: item.secondaryStats || null,
+          itemSecondaryStats: candidateStats || null,
+          itemSecondaryStatTypes: item.secondaryStatTypes || [],
           statFitScore: statFit.score,
           statFitMultiplier: statFit.multiplier,
           statFitLabel: statFit.label,

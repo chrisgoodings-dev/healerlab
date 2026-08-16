@@ -45,9 +45,19 @@ export function normaliseJournalName(value) {
     .trim();
 }
 
+function token(value) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 function dungeonDefinition(value) {
   const normalized = normaliseJournalName(value);
-  return SEASON_2_DUNGEONS.find((dungeon) => normaliseJournalName(dungeon.name) === normalized) || null;
+  return SEASON_2_DUNGEONS.find(
+    (dungeon) => normaliseJournalName(dungeon.name) === normalized
+  ) || null;
 }
 
 export function findJournalInstance(index, dungeonName) {
@@ -58,7 +68,9 @@ export function findJournalInstance(index, dungeonName) {
       : [];
   const target = normaliseJournalName(dungeonName);
 
-  return instances.find((instance) => normaliseJournalName(instance?.name) === target) || null;
+  return instances.find(
+    (instance) => normaliseJournalName(instance?.name) === target
+  ) || null;
 }
 
 function mediaUrl(media) {
@@ -74,6 +86,90 @@ function encounterRefs(instance) {
   if (Array.isArray(instance?.encounters)) return instance.encounters;
   if (Array.isArray(instance?.journal_encounters)) return instance.journal_encounters;
   return [];
+}
+
+function slotFromInventoryType(value) {
+  const type = token(value);
+
+  const slots = {
+    HEAD: 'head',
+    NECK: 'neck',
+    SHOULDER: 'shoulder',
+    SHOULDERS: 'shoulder',
+    CLOAK: 'back',
+    BACK: 'back',
+    CHEST: 'chest',
+    ROBE: 'chest',
+    WRIST: 'wrist',
+    WRISTS: 'wrist',
+    HAND: 'hands',
+    HANDS: 'hands',
+    WAIST: 'waist',
+    LEGS: 'legs',
+    FEET: 'feet',
+    FINGER: 'ring',
+    TRINKET: 'trinket',
+    WEAPON: 'main_hand',
+    WEAPONMAINHAND: 'main_hand',
+    WEAPON_MAIN_HAND: 'main_hand',
+    TWO_HAND_WEAPON: 'main_hand',
+    TWOHANDWEAPON: 'main_hand',
+    _2HWEAPON: 'main_hand',
+    '2HWEAPON': 'main_hand',
+    RANGED: 'main_hand',
+    RANGEDRIGHT: 'main_hand',
+    OFFHAND: 'off_hand',
+    OFF_HAND: 'off_hand',
+    WEAPONOFFHAND: 'off_hand',
+    WEAPON_OFF_HAND: 'off_hand',
+    HOLDABLE: 'off_hand',
+    SHIELD: 'off_hand',
+  };
+
+  return slots[type] || null;
+}
+
+function armorFromDetails(details, slot) {
+  if (slot === 'back' || slot === 'neck' || slot === 'ring' || slot === 'trinket') {
+    return null;
+  }
+
+  const subclass = normaliseJournalName(details?.itemSubclass);
+  if (['cloth', 'leather', 'mail', 'plate'].includes(subclass)) return subclass;
+  return null;
+}
+
+function weaponTypeFromDetails(details, slot) {
+  const itemClass = normaliseJournalName(details?.itemClass);
+  const subclass = String(details?.itemSubclass || '').trim();
+
+  if (itemClass === 'weapon') return subclass || null;
+  if (slot === 'off_hand' && /shield|held in off hand|off hand/i.test(subclass)) {
+    return subclass || 'Off Hand';
+  }
+  return null;
+}
+
+export function normaliseOfficialItemDetails(item, details = {}) {
+  const inventoryType = details.inventoryType || null;
+  const slot = slotFromInventoryType(inventoryType);
+
+  return {
+    ...item,
+    name: details.name || item.name,
+    slot,
+    armor: armorFromDetails(details, slot),
+    weaponType: weaponTypeFromDetails(details, slot),
+    itemClass: details.itemClass || null,
+    itemSubclass: details.itemSubclass || null,
+    inventoryType,
+    secondaryStats: details.secondaryStats || null,
+    secondaryStatTypes: Array.isArray(details.secondaryStatTypes)
+      ? details.secondaryStatTypes
+      : [],
+    effects: Array.isArray(details.effects) ? details.effects : [],
+    metadataSource: 'blizzard-item',
+  };
 }
 
 export function normaliseJournalDungeon({ definition, instance, media, encounters }) {
@@ -109,6 +205,23 @@ export function normaliseJournalDungeon({ definition, instance, media, encounter
     source: 'blizzard-journal',
     resolvedAt: new Date().toISOString(),
   };
+}
+
+async function mapWithConcurrency(values, concurrency, mapper) {
+  const items = Array.isArray(values) ? values : [];
+  const results = new Array(items.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  const count = Math.min(Math.max(1, concurrency), items.length || 1);
+  await Promise.all(Array.from({ length: count }, () => worker()));
+  return results;
 }
 
 async function getJournalIndex(region, env) {
@@ -155,12 +268,10 @@ async function fetchJournalDungeon({ region, definition, env }) {
       throw error;
     }
 
-    const instance = await blizzardGet(`/data/wow/journal-instance/${instanceRef.id}`, {
-      region,
-      namespace,
-      locale,
-      env,
-    });
+    const instance = await blizzardGet(
+      `/data/wow/journal-instance/${instanceRef.id}`,
+      { region, namespace, locale, env }
+    );
 
     const refs = encounterRefs(instance);
     const [media, ...encounters] = await Promise.all([
@@ -180,19 +291,48 @@ async function fetchJournalDungeon({ region, definition, env }) {
       ),
     ]);
 
-    const journal = normaliseJournalDungeon({ definition, instance, media, encounters });
-    const items = await Promise.all(
-      journal.items.map(async (item) => {
+    const journal = normaliseJournalDungeon({
+      definition,
+      instance,
+      media,
+      encounters,
+    });
+
+    const items = await mapWithConcurrency(
+      journal.items,
+      5,
+      async (item) => {
         try {
-          const details = await fetchBlizzardItemStats({ region, itemId: item.id, env });
-          return { ...item, secondaryStats: details.secondaryStats };
+          const details = await fetchBlizzardItemStats({
+            region,
+            itemId: item.id,
+            env,
+          });
+          return normaliseOfficialItemDetails(item, details);
         } catch {
-          return { ...item, secondaryStats: null };
+          return {
+            ...item,
+            slot: null,
+            armor: null,
+            weaponType: null,
+            secondaryStats: null,
+            secondaryStatTypes: [],
+            metadataSource: 'journal-only',
+          };
         }
-      })
+      }
     );
 
-    return { ...journal, items };
+    return {
+      ...journal,
+      items,
+      classifiedItems: items.filter((item) => item.slot).length,
+      statTypedItems: items.filter(
+        (item) =>
+          Object.values(item.secondaryStats || {}).some((value) => Number(value) > 0)
+          || item.secondaryStatTypes.length > 0
+      ).length,
+    };
   })();
 
   dungeonCache.set(cacheKey, {
@@ -213,10 +353,14 @@ export async function onRequestGet(context) {
   const region = (url.searchParams.get('region') || '').toLowerCase();
   const requestedDungeon = url.searchParams.get('name') || '';
 
-  if (!ALLOWED_REGIONS.has(region)) return json({ message: 'Unsupported region.' }, 400);
+  if (!ALLOWED_REGIONS.has(region)) {
+    return json({ message: 'Unsupported region.' }, 400);
+  }
 
   const definition = dungeonDefinition(requestedDungeon);
-  if (!definition) return json({ message: 'Unsupported Season 2 dungeon.' }, 400);
+  if (!definition) {
+    return json({ message: 'Unsupported Season 2 dungeon.' }, 400);
+  }
 
   if (!blizzardConfigured(context.env || {})) {
     return json({ message: 'Blizzard API credentials are not configured.' }, 503);
