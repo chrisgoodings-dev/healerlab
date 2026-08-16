@@ -225,6 +225,9 @@ function renderGear(gear, region) {
       ? `<img class="gear-icon${tooltipClass}" src="${escapeHtml(item.iconUrl)}" alt="" loading="lazy" ${tooltipAttributes} />`
       : `<span class="gear-icon gear-icon-fallback${tooltipClass}" ${tooltipAttributes}>${escapeHtml(item.label.slice(0, 1))}</span>`;
     const source = item.source === 'blizzard' ? 'Official Blizzard equipment' : 'Raider.IO equipment';
+    const bisTarget = item.bisTargetName
+      ? `<small class="gear-bis-target">Personal BiS: ${escapeHtml(item.bisTargetName)} | ${escapeHtml(item.bisTargetDungeon || "Season 2 dungeon")}${item.bisAlignmentGain > 0 ? ` | +${item.bisAlignmentGain.toFixed(1)} alignment` : ``}</small>`
+      : '';
 
     return `
       <div class="gear-row">
@@ -233,7 +236,8 @@ function renderGear(gear, region) {
           <div class="gear-copy">
             <strong>${escapeHtml(item.label)}</strong>
             <span>${escapeHtml(item.name)} | ${item.belowAverage.toFixed(0)} ilvl below ${item.baseline.toFixed(1)} equipped average</span>
-            <small class="gear-source">${escapeHtml(source)}${item.itemId ? ` | Item ${item.itemId}` : ''}</small>
+            <small class="gear-source">${escapeHtml(source)}${item.itemId ? ` | Item ${item.itemId}` : ``}</small>
+            ${bisTarget}
           </div>
         </div>
         <span class="gear-ilvl">${item.itemLevel}</span>
@@ -371,12 +375,16 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel, region 
     const fit = match.statFitLabel && match.statFitLabel !== 'No stat signal'
       ? `<small class="loot-stat-fit ${escapeHtml(match.statFitStatus || 'neutral')}">${stats.length ? `${escapeHtml(stats.join(' / '))} | ` : ''}${escapeHtml(match.statFitLabel)} (${fitSign}${Math.round(fitScore)})${escapeHtml(alignmentChange)}</small>`
       : '';
+    const bisBadge = match.bisStatus
+      ? `<span class="loot-bis-badge">${escapeHtml(match.bisStatus)}</span>`
+      : '';
 
     return `
       <li>
         ${gearIcon}
         <div>
           <strong>${escapeHtml(match.itemName)}</strong>
+          ${bisBadge}
           <span>Recommended ${escapeHtml(match.targetLabel)} target | ${match.currentItemLevel} -> ${match.dropItemLevel} (+${match.upgradeDelta} ilvl)${official}</span>
           ${fit}
         </div>
@@ -405,7 +413,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel, region 
       ${instanceIcon(dungeon, 'loot-instance-icon-small')}
       <div>
         <strong>${escapeHtml(dungeon.name)}</strong>
-        <span>${dungeon.matchedSlots} recommended target${dungeon.matchedSlots === 1 ? '' : 's'}${Number(dungeon.candidateDrops) > dungeon.matchedSlots ? ` | ${dungeon.candidateDrops} candidates compared` : ''}${dungeon.journalInstanceId ? ` | Journal ${dungeon.journalInstanceId}` : ''}</span>
+        <span>${dungeon.matchedSlots} recommended target${dungeon.matchedSlots === 1 ? '' : 's'}${dungeon.bisTargets ? ` | ${dungeon.bisTargets} personal BiS target${dungeon.bisTargets === 1 ? '' : 's'}` : ''}${dungeon.nearBisTargets ? ` | ${dungeon.nearBisTargets} near-BiS` : ''}${Number(dungeon.candidateDrops) > dungeon.matchedSlots ? ` | ${dungeon.candidateDrops} candidates compared` : ''}${dungeon.journalInstanceId ? ` | Journal ${dungeon.journalInstanceId}` : ''}</span>
       </div>
       <strong>${Math.round(dungeon.gearOpportunity)}</strong>
     </div>
@@ -532,6 +540,43 @@ function renderPlaybook(character, context) {
   note.textContent = `Updated for the Midnight 12.1 baseline (${playbook.dataVersion}). This is a conditional healer priority framework, not a fixed cast sequence; talents and encounter damage patterns can change the correct choice.`;
 }
 
+function renderBisPlan(profile) {
+  const container = $('#bis-plan-list');
+  const score = $('#bis-plan-score');
+  const note = $('#bis-plan-note');
+  if (!container || !score || !note) return;
+
+  if (!profile?.available) {
+    score.textContent = '-';
+    container.innerHTML = '<p class="empty-state">Personal dungeon BiS needs live item secondary-stat data and a valid character stat profile.</p>';
+    note.textContent = profile?.note || '';
+    return;
+  }
+
+  score.textContent = `${profile.rankedSlots} slots`;
+  const labelBySlot = {
+    head: 'Head', neck: 'Neck', shoulder: 'Shoulders', back: 'Back',
+    chest: 'Chest', wrist: 'Wrists', hands: 'Hands', waist: 'Waist',
+    legs: 'Legs', feet: 'Feet', finger_1: 'Ring 1', finger_2: 'Ring 2',
+    main_hand: 'Main hand', off_hand: 'Off hand'
+  };
+
+  container.innerHTML = profile.best
+    .sort((a, b) => a.slot.localeCompare(b.slot))
+    .map((item) => `
+      <div class="bis-plan-row">
+        <span class="bis-slot">${escapeHtml(labelBySlot[item.slot] || item.slot)}</span>
+        <div>
+          <strong>${escapeHtml(item.itemName)}</strong>
+          <small>${escapeHtml(item.dungeonName)} | ${escapeHtml(item.fitLabel)}${item.alignmentGain ? ` | ${item.alignmentGain >= 0 ? '+' : ''}${item.alignmentGain.toFixed(1)} alignment` : ''}</small>
+        </div>
+        <span class="bis-badge">BiS</span>
+      </div>
+    `).join('');
+
+  note.textContent = profile.note;
+}
+
 function renderCharacter(character, options) {
   const analysis = buildAnalysis(character, options);
   const score = analysis.currentScore;
@@ -587,6 +632,7 @@ function renderCharacter(character, options) {
   renderDungeons(analysis.dungeons, analysis.lootDungeons, analysis.season);
   renderGear(analysis.weakGear, character.region || $('#region').value);
   renderStatAlignment(analysis.statAlignment);
+  renderBisPlan(analysis.bisProfile);
   renderLootPlanner(analysis.lootDungeons, {
     version: analysis.lootDataVersion,
     keyLevel: analysis.farmKeyLevel,

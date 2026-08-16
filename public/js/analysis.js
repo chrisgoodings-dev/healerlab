@@ -3,6 +3,7 @@ import { enrichCuratedDungeonsWithOfficial } from './official-loot.js';
 import { buildStatAlignment, replacementStatFit } from './stat-alignment.js';
 
 import { MIDNIGHT_SEASON_2, currentSeasonState, isMidnightSeason2ScoreEntry, normaliseContentName, seasonDungeonFor } from './season-12-1.js';
+import { buildPersonalDungeonBis, getBisMatch, mergeBisGearPriorities } from './bis.js';
 const SLOT_LABELS = {
   head: 'Head',
   neck: 'Neck',
@@ -296,32 +297,59 @@ function bestTargetForLootItem(item, weakGear) {
   return candidates[0] || null;
 }
 
+export function buildBisAwareGearPriorities(
+  character,
+  { keyLevel = 10, statContext = 'mythic_plus', limit = 10 } = {}
+) {
+  const weak = gearWeaknesses(character, 16);
+  const gear = normaliseGear(character);
+  const statAlignment = buildStatAlignment(character, { context: statContext });
+  const usableLoot = usableLootForCharacter(character);
+  const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment });
+  const dropItemLevel = endOfDungeonItemLevel(keyLevel);
+
+  return mergeBisGearPriorities(weak, gear, bisProfile, {
+    dropItemLevel,
+    limit,
+  });
+}
+
 export function dungeonLootOpportunities(character, { keyLevel = 10, statContext = 'mythic_plus' } = {}) {
   const weakGear = gearWeaknesses(character, 16);
   const statAlignment = buildStatAlignment(character, { context: statContext });
   const usableLoot = usableLootForCharacter(character);
+  const bisProfile = buildPersonalDungeonBis(character, usableLoot, { statAlignment });
   const farmKeyLevel = Math.max(2, Math.floor(Number(keyLevel) || 10));
   const dropItemLevel = endOfDungeonItemLevel(farmKeyLevel);
+  const farmTargets = mergeBisGearPriorities(
+    weakGear,
+    normaliseGear(character),
+    bisProfile,
+    { dropItemLevel, limit: 16 }
+  );
 
   const candidates = usableLoot.map((dungeon) => {
     const itemMatches = dungeon.items
       .map((item) => {
-        const target = bestTargetForLootItem(item, weakGear);
+        const target = bestTargetForLootItem(item, farmTargets);
         if (!target) return null;
 
         const upgradeDelta = dropItemLevel - target.itemLevel;
-        if (upgradeDelta <= 0) return null;
+        const sameLevelBisSidegrade = upgradeDelta === 0
+          && bisMatch.exact
+          && Number(statFit.alignmentGain) >= 0.75;
+        if (upgradeDelta < 0 || (upgradeDelta === 0 && !sameLevelBisSidegrade)) return null;
 
         const statFit = replacementStatFit(
           item.secondaryStats,
           target.secondaryStats,
           statAlignment
         );
-        const baseUpgradeValue = (
-          upgradeDelta *
-          (0.5 + (target.priority / 200))
-        );
-        const upgradeValue = baseUpgradeValue * statFit.multiplier;
+        const bisMatch = getBisMatch(item, target.slot, bisProfile);
+        const baseUpgradeValue = upgradeDelta > 0
+          ? upgradeDelta * (0.5 + (target.priority / 200))
+          : Math.max(2, Number(statFit.alignmentGain) * 4);
+        const upgradeValue = baseUpgradeValue * statFit.multiplier * bisMatch.multiplier;
 
         return {
           itemName: item.name,
@@ -333,6 +361,11 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
           statFitMultiplier: statFit.multiplier,
           statFitLabel: statFit.label,
           statFitStatus: statFit.status,
+          bisStatus: bisMatch.label,
+          bisRank: bisMatch.rank,
+          bisExact: bisMatch.exact,
+          bisNear: bisMatch.near,
+          bisMultiplier: bisMatch.multiplier,
           replacementAnalysisAvailable: statFit.replacementAvailable === true,
           projectedAlignmentScore: Number(statFit.projectedAlignmentScore) || null,
           alignmentGain: Number(statFit.alignmentGain) || 0,
@@ -406,7 +439,12 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
       0
     );
     const breadthBonus = Math.min(12, Math.max(0, slotMatches.length - 1) * 2);
-    const rawGearOpportunity = upgradeCoverage + breadthBonus;
+    const bisBonus = slotMatches.reduce(
+      (sum, match) => sum
+        + (match.bisExact ? 12 : match.bisNear ? 5 : 0),
+      0
+    );
+    const rawGearOpportunity = upgradeCoverage + breadthBonus + bisBonus;
 
     return {
       name: dungeon.name,
@@ -420,6 +458,9 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
       eligibleItems: dungeon.items.length,
       candidateDrops: itemMatches.length,
       matchingDrops: slotMatches.length,
+      bisTargets: slotMatches.filter((match) => match.bisExact).length,
+      nearBisTargets: slotMatches.filter((match) => match.bisNear).length,
+      bisBonus,
       farmKeyLevel,
       dropItemLevel,
       statAlignmentAvailable: statAlignment.available === true,
@@ -500,7 +541,9 @@ function gearRecommendation(item) {
     key: `gear:${item.slot}`,
     type: 'gear',
     title: `Target a ${item.label.toLowerCase()} upgrade`,
-    detail: `${item.name} is item level ${item.itemLevel}, ${item.belowAverage.toFixed(0)} levels below your ${item.baseline.toFixed(1)} equipped-item average.`,
+    detail: item.bisTargetName
+      ? `${item.name} is item level ${item.itemLevel}. Personal Dungeon BiS target: ${item.bisTargetName} from ${item.bisTargetDungeon}${item.bisAlignmentGain > 0 ? ` (+${item.bisAlignmentGain.toFixed(1)} projected stat alignment)` : ``}.`
+      : `${item.name} is item level ${item.itemLevel}, ${item.belowAverage.toFixed(0)} levels below your ${item.baseline.toFixed(1)} equipped-item average.`,
     value: item.priority,
     label: priorityLabel(item.priority),
   };
@@ -554,7 +597,10 @@ const STRATEGIES = {
 export function buildRecommendations(character, { focus = 'balanced', targetScore = 3000, farmKeyLevel = 10, statContext = 'mythic_plus' } = {}) {
   const currentScore = getCurrentScore(character);
   const dungeonCandidates = dungeonOpportunities(character).map(dungeonRecommendation);
-  const gearCandidates = gearWeaknesses(character).map(gearRecommendation);
+  const gearCandidates = buildBisAwareGearPriorities(character, {
+    keyLevel: farmKeyLevel,
+    statContext,
+  }).map(gearRecommendation);
   const farmCandidates = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel, statContext })
     .filter((dungeon) => dungeon.gearOpportunity > 0)
     .map(farmRecommendation);
@@ -614,6 +660,17 @@ export function buildAnalysis(character, options = {}) {
   const statContext = options.statContext === 'raid' ? 'raid' : 'mythic_plus';
   const statAlignment = buildStatAlignment(character, { context: statContext });
   const lootDungeons = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel, statContext });
+  const bisProfileForAnalysis = buildPersonalDungeonBis(
+    character,
+    usableLootForCharacter(character),
+    { statAlignment }
+  );
+  const bisAwareGear = mergeBisGearPriorities(
+    gearWeaknesses(character, 16),
+    normaliseGear(character),
+    bisProfileForAnalysis,
+    { dropItemLevel: endOfDungeonItemLevel(farmKeyLevel), limit: 10 }
+  );
   const season = currentSeasonState();
 
   return {
@@ -627,7 +684,8 @@ export function buildAnalysis(character, options = {}) {
     season,
     runs: normaliseRuns(character),
     dungeons: dungeonOpportunities(character),
-    weakGear: gearWeaknesses(character),
+    weakGear: bisAwareGear,
+    bisProfile: bisProfileForAnalysis,
     lootDungeons,
     bestGearFarm: lootDungeons[0] || null,
     farmKeyLevel,

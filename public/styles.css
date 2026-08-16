@@ -1275,3 +1275,99 @@ h4,
   }
 }
 /* END MIDNIGHT-12-1-PREMIUM-UI */
+
+/* BEGIN BIS-AWARE-GEARING */
+.bis-plan-card {
+  border-color: rgba(242, 193, 78, 0.24);
+  background:
+    radial-gradient(circle at 88% 10%, rgba(242, 193, 78, 0.07), transparent 30%),
+    linear-gradient(180deg, rgba(18, 43, 31, 0.96), rgba(8, 24, 18, 0.98));
+}
+
+.bis-plan-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bis-plan-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.32fr) minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(3, 16, 11, 0.34);
+}
+
+.bis-plan-row:hover {
+  border-color: rgba(242, 193, 78, 0.24);
+}
+
+.bis-slot {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bis-plan-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bis-plan-row strong {
+  color: var(--text-primary);
+}
+
+.bis-plan-row small {
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.bis-badge,
+.loot-bis-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid rgba(242, 193, 78, 0.32);
+  border-radius: 999px;
+  background: rgba(242, 193, 78, 0.08);
+  color: #F2C14E;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.loot-bis-badge {
+  margin-left: 7px;
+  vertical-align: middle;
+}
+
+.gear-bis-target {
+  display: block;
+  margin-top: 4px;
+  color: #F2C14E;
+  font-weight: 700;
+}
+
+.bis-plan-note {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .bis-plan-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .bis-slot {
+    grid-column: 1 / -1;
+  }
+}
+/* END BIS-AWARE-GEARING */
