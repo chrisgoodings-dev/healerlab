@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="HealerLab turns World of Warcraft character data into an explainable Mythic+ improvement plan." />
+  <title>HealerLab | WoW Healer Progression Planner</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="HealerLab home">
+      <span class="brand-mark" aria-hidden="true">+</span>
+      <span>Healer<span class="brand-accent">Lab</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary navigation">
+      <a href="#analyse">Analyse</a>
+      <a href="#method">Method</a>
+      <a href="#about">About</a>
+    </nav>
+    <span class="api-pill"><span class="status-dot"></span> Raider.IO powered</span>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow">HEALER PROGRESSION, EXPLAINED</p>
+        <h1>Turn your character data into a <span>clear next move.</span></h1>
+        <p class="hero-intro">HealerLab analyses your Mythic+ profile, gear and raid progress, then ranks practical improvement opportunities instead of just showing another score.</p>
+        <div class="hero-points" aria-label="HealerLab capabilities">
+          <span>Live character data</span>
+          <span>Explainable recommendations</span>
+          <span>No account required</span>
+        </div>
+      </div>
+
+      <div class="hero-orbit" aria-hidden="true">
+        <div class="orbit-ring orbit-ring-large"></div>
+        <div class="orbit-ring orbit-ring-small"></div>
+        <div class="hero-core">
+          <span class="core-plus">+</span>
+          <strong>HEAL</strong>
+          <small>analyse · improve</small>
+        </div>
+        <div class="orbit-chip chip-one">M+</div>
+        <div class="orbit-chip chip-two">GEAR</div>
+        <div class="orbit-chip chip-three">RAID</div>
+      </div>
+    </section>
+
+    <section class="analysis-shell shell" id="analyse">
+      <form id="character-form" class="search-panel" novalidate>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">CHARACTER ANALYSIS</p>
+            <h2>Where should you improve next?</h2>
+          </div>
+          <button id="demo-button" class="text-button" type="button">Load example</button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Region</span>
+            <select id="region" name="region">
+              <option value="eu" selected>Europe</option>
+              <option value="us">Americas</option>
+              <option value="kr">Korea</option>
+              <option value="tw">Taiwan</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Realm</span>
+            <input id="realm" name="realm" type="text" value="Tarren Mill" autocomplete="off" required maxlength="80" />
+          </label>
+
+          <label>
+            <span>Character</span>
+            <input id="character" name="character" type="text" placeholder="Character name" autocomplete="off" required maxlength="24" />
+          </label>
+
+          <label>
+            <span>Improvement focus</span>
+            <select id="focus" name="focus">
+              <option value="balanced" selected>Balanced progression</option>
+              <option value="score">Mythic+ score</option>
+              <option value="gear">Gear efficiency</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Target M+ score</span>
+            <input id="target-score" name="targetScore" type="number" value="3000" min="0" max="10000" step="50" />
+          </label>
+
+          <div class="submit-wrap">
+            <button class="primary-button" type="submit">
+              <span>Analyse character</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </div>
+
+        <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
+      </form>
+
+      <section id="results" class="results is-hidden" aria-live="polite">
+        <div id="loading" class="loading-card is-hidden">
+          <div class="spinner" aria-hidden="true"></div>
+          <div><strong>Reading character data</strong><span>Analysing progression opportunities…</span></div>
+        </div>
+
+        <div id="dashboard" class="dashboard is-hidden">
+          <section class="profile-card card">
+            <div class="profile-identity">
+              <div id="avatar" class="avatar" aria-hidden="true">HL</div>
+              <div>
+                <div class="profile-name-row">
+                  <h2 id="character-name">Character</h2>
+                  <span id="character-role" class="role-badge">HEALER</span>
+                </div>
+                <p id="character-meta" class="muted">Realm · Class · Spec</p>
+                <a id="profile-link" class="profile-link" href="#" target="_blank" rel="noreferrer">Open Raider.IO profile ↗</a>
+              </div>
+            </div>
+            <div class="headline-stats">
+              <div><span>Item level</span><strong id="item-level">—</strong></div>
+              <div><span>M+ score</span><strong id="mythic-score">—</strong></div>
+              <div><span>Target gap</span><strong id="score-gap">—</strong></div>
+            </div>
+          </section>
+
+          <section class="overview-grid">
+            <article class="card score-card">
+              <div class="card-heading">
+                <div><p class="eyebrow">TARGET TRACKER</p><h3>Progress to goal</h3></div>
+                <span id="target-label" class="mini-label">3,000</span>
+              </div>
+              <div class="score-visual-wrap">
+                <div id="score-ring" class="score-ring" style="--progress: 0deg">
+                  <div class="score-ring-inner"><strong id="score-percent">0%</strong><span>of target</span></div>
+                </div>
+                <div class="score-context">
+                  <p id="score-summary">Run an analysis to see your progression.</p>
+                  <div class="meter"><span id="score-meter"></span></div>
+                  <small id="score-detail" class="muted">Your target is controlled by the form above.</small>
+                </div>
+              </div>
+            </article>
+
+            <article class="card raid-card">
+              <div class="card-heading">
+                <div><p class="eyebrow">RAID SNAPSHOT</p><h3>Current progression</h3></div>
+              </div>
+              <div id="raid-progress" class="raid-progress empty-state">No raid data loaded.</div>
+            </article>
+          </section>
+
+          <section class="card recommendations-card">
+            <div class="card-heading">
+              <div><p class="eyebrow">DECISION ENGINE</p><h3>Your next best moves</h3></div>
+              <span class="mini-label">ranked</span>
+            </div>
+            <div id="recommendations" class="recommendation-list"></div>
+          </section>
+
+          <section class="two-column-grid">
+            <article class="card">
+              <div class="card-heading">
+                <div><p class="eyebrow">MYTHIC+ PROFILE</p><h3>Dungeon opportunity map</h3></div>
+              </div>
+              <div id="dungeon-list" class="dungeon-list"></div>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <div><p class="eyebrow">GEAR TRIAGE</p><h3>Lowest equipped slots</h3></div>
+              </div>
+              <div id="gear-list" class="gear-list"></div>
+            </article>
+          </section>
+
+          <section class="card explanation-card" id="method">
+            <div>
+              <p class="eyebrow">WHY THIS RECOMMENDATION?</p>
+              <h3>Explainable, not magical.</h3>
+            </div>
+            <p id="method-summary">HealerLab ranks opportunities using the character's actual dungeon scores and equipment. It does not claim to simulate healing throughput.</p>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <section class="method-section shell" id="about">
+      <div>
+        <p class="eyebrow">THE PROJECT</p>
+        <h2>Built as a decision-support tool, not another profile page.</h2>
+      </div>
+      <div class="method-cards">
+        <article><span>01</span><h3>Retrieve</h3><p>A server-side endpoint requests public character data from Raider.IO.</p></article>
+        <article><span>02</span><h3>Normalise</h3><p>Raw API responses are converted into a small internal character model.</p></article>
+        <article><span>03</span><h3>Analyse</h3><p>JavaScript ranks score and gear opportunities using transparent heuristics.</p></article>
+        <article><span>04</span><h3>Explain</h3><p>The interface shows why an activity was prioritised instead of presenting a black-box score.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer shell">
+    <div class="brand small"><span class="brand-mark" aria-hidden="true">+</span><span>Healer<span class="brand-accent">Lab</span></span></div>
+    <p>Independent fan project. World of Warcraft and related marks belong to Blizzard Entertainment.</p>
+  </footer>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
