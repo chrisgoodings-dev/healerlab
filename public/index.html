@@ -43,7 +43,7 @@
         <div class="hero-core">
           <span class="core-plus">+</span>
           <strong>HEAL</strong>
-          <small>analyse Â· improve</small>
+          <small>analyse | improve</small>
         </div>
         <div class="orbit-chip chip-one">M+</div>
         <div class="orbit-chip chip-two">GEAR</div>
@@ -96,10 +96,15 @@
             <input id="target-score" name="targetScore" type="number" value="3000" min="0" max="10000" step="50" />
           </label>
 
+          <label>
+            <span>Farm key level</span>
+            <input id="farm-key-level" name="farmKeyLevel" type="number" value="10" min="2" max="30" step="1" />
+          </label>
+
           <div class="submit-wrap">
             <button class="primary-button" type="submit">
               <span>Analyse character</span>
-              <span aria-hidden="true">â†’</span>
+              <span aria-hidden="true">-></span>
             </button>
           </div>
         </div>
@@ -110,7 +115,7 @@
       <section id="results" class="results is-hidden" aria-live="polite">
         <div id="loading" class="loading-card is-hidden">
           <div class="spinner" aria-hidden="true"></div>
-          <div><strong>Reading character data</strong><span>Analysing progression opportunitiesâ€¦</span></div>
+          <div><strong>Reading character data</strong><span>Analysing progression opportunities...</span></div>
         </div>
 
         <div id="dashboard" class="dashboard is-hidden">
@@ -122,14 +127,14 @@
                   <h2 id="character-name">Character</h2>
                   <span id="character-role" class="role-badge">HEALER</span>
                 </div>
-                <p id="character-meta" class="muted">Realm Â· Class Â· Spec</p>
-                <a id="profile-link" class="profile-link" href="#" target="_blank" rel="noreferrer">Open Raider.IO profile â†—</a>
+                <p id="character-meta" class="muted">Realm | Class | Spec</p>
+                <a id="profile-link" class="profile-link" href="#" target="_blank" rel="noreferrer">Open Raider.IO profile </a>
               </div>
             </div>
             <div class="headline-stats">
-              <div><span>Item level</span><strong id="item-level">â€”</strong></div>
-              <div><span>M+ score</span><strong id="mythic-score">â€”</strong></div>
-              <div><span>Target gap</span><strong id="score-gap">â€”</strong></div>
+              <div><span>Item level</span><strong id="item-level">-</strong></div>
+              <div><span>M+ score</span><strong id="mythic-score">-</strong></div>
+              <div><span>Target gap</span><strong id="score-gap">-</strong></div>
             </div>
           </section>
 
@@ -165,6 +170,28 @@
               <span class="mini-label">ranked</span>
             </div>
             <div id="recommendations" class="recommendation-list"></div>
+          </section>
+
+          <section class="card loot-planner-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">DUNGEON GEAR PLANNER</p>
+                <h3>Which dungeon should I run?</h3>
+              </div>
+              <span id="loot-version" class="mini-label">Season 2</span>
+            </div>
+            <div id="best-loot-farm" class="best-loot-farm">
+              <div class="loot-best-copy">
+                <span class="loot-best-label">GEAR FARM</span>
+                <h4>Run an analysis to rank the Season 2 loot pool.</h4>
+              </div>
+            </div>
+            <div class="loot-ranking-heading">
+              <span>Dungeon ranking</span>
+              <span>relative gear opportunity</span>
+            </div>
+            <div id="loot-ranking" class="loot-ranking"></div>
+            <p id="loot-disclaimer" class="loot-disclaimer">The planner matches healer-eligible dungeon loot to weak equipped slots and ranks relative item-level upgrade opportunity.</p>
           </section>
 
           <section class="two-column-grid">

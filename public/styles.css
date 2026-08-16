@@ -94,7 +94,7 @@ a { color: inherit; }
 .text-button { border: 0; background: transparent; color: var(--accent); cursor: pointer; padding: 8px 0; font-size: .84rem; }
 .text-button:hover { text-decoration: underline; }
 
-.form-grid { display: grid; grid-template-columns: .7fr 1.25fr 1.25fr 1.25fr .9fr 1.1fr; gap: 12px; align-items: end; }
+.form-grid { display: grid; grid-template-columns: .65fr 1fr 1fr 1.05fr .8fr .72fr 1fr; gap: 12px; align-items: end; }
 label { display: grid; gap: 8px; color: #b8c7c1; font-size: .78rem; font-weight: 650; }
 input, select { width: 100%; min-height: 48px; border: 1px solid var(--line); border-radius: 12px; padding: 0 13px; color: var(--text); background: rgba(5,15,12,.66); outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
 input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0 0 3px rgba(132,240,193,.08); }
@@ -169,6 +169,41 @@ input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0
 .gear-row span { color: var(--muted); font-size: .68rem; }
 .gear-ilvl { color: var(--warning); font-weight: 850; }
 
+
+.loot-planner-card { overflow: hidden; }
+.best-loot-farm {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-small);
+  background: linear-gradient(135deg, rgba(132,240,193,.1), rgba(255,255,255,.018));
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  align-items: start;
+}
+.loot-best-copy { min-width: 0; }
+.loot-best-label { display: block; margin-bottom: 6px; color: var(--accent); font-size: .64rem; font-weight: 900; letter-spacing: .13em; }
+.best-loot-farm h4 { margin: 0; font-size: 1.35rem; letter-spacing: -.035em; }
+.best-loot-farm p { margin: 7px 0 0; color: #c3d3cc; font-size: .82rem; line-height: 1.5; }
+.loot-match-list { margin: 15px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.loot-match-list li { display: grid; grid-template-columns: minmax(180px, .8fr) 1fr; gap: 10px; align-items: baseline; padding-top: 7px; border-top: 1px solid var(--line); }
+.loot-match-list li strong { font-size: .76rem; }
+.loot-match-list li span { color: var(--muted); font-size: .68rem; }
+.loot-score { min-width: 88px; text-align: right; }
+.loot-score strong { display: block; color: var(--accent); font-size: 2rem; line-height: 1; letter-spacing: -.05em; }
+.loot-score span { color: var(--muted); font-size: .68rem; }
+.loot-ranking-heading { margin-top: 22px; display: flex; justify-content: space-between; gap: 15px; color: var(--muted); font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; }
+.loot-ranking { margin-top: 8px; display: grid; }
+.loot-dungeon-row { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.loot-dungeon-row:last-child { border-bottom: 0; }
+.loot-rank { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 8px; background: rgba(255,255,255,.035); color: var(--muted); font-size: .68rem; font-weight: 850; }
+.loot-dungeon-row div { display: grid; gap: 2px; min-width: 0; }
+.loot-dungeon-row div strong { font-size: .82rem; }
+.loot-dungeon-row div span { color: var(--muted); font-size: .68rem; }
+.loot-dungeon-row > strong { color: var(--accent); font-size: .86rem; }
+.loot-disclaimer { margin: 15px 0 0; color: var(--muted); font-size: .68rem; line-height: 1.5; }
+
 .explanation-card { display: grid; grid-template-columns: .65fr 1.35fr; gap: 40px; align-items: center; border-color: rgba(132,240,193,.2); background: linear-gradient(120deg, rgba(132,240,193,.08), rgba(11,23,20,.9) 42%); }
 .explanation-card h3 { margin: 0; font-size: 1.35rem; }
 .explanation-card > p { margin: 0; color: #bacbc4; line-height: 1.65; font-size: .88rem; }
@@ -219,6 +254,9 @@ input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0
   .score-visual-wrap { grid-template-columns: 1fr; }
   .score-ring { margin-inline: auto; }
   .recommendation { grid-template-columns: 36px 1fr; }
+  .best-loot-farm { grid-template-columns: 1fr; }
+  .loot-score { text-align: left; }
+  .loot-match-list li { grid-template-columns: 1fr; gap: 2px; }
   .priority { grid-column: 2; text-align: left; }
   .method-cards { grid-template-columns: 1fr; }
   .method-cards article { min-height: 170px; }

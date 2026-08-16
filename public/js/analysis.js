@@ -1,3 +1,5 @@
+import { CLASS_ARMOR, HEALER_CLASSES, LOOT_DATA_VERSION, SEASON_2_DUNGEONS, endOfDungeonItemLevel } from './loot-data.js';
+
 const SLOT_LABELS = {
   head: 'Head',
   neck: 'Neck',
@@ -145,6 +147,150 @@ export function raidSnapshot(character, limit = 4) {
     .slice(0, limit);
 }
 
+function canonicalClass(character) {
+  const name = String(character?.class || '').trim();
+  return HEALER_CLASSES.includes(name) ? name : name;
+}
+
+function itemIsUsable(character, item) {
+  const className = canonicalClass(character);
+
+  if (item.armor) {
+    return CLASS_ARMOR[className] === item.armor;
+  }
+
+  if (Array.isArray(item.classes)) {
+    return item.classes.includes(className);
+  }
+
+  return true;
+}
+
+export function usableLootForCharacter(character) {
+  return SEASON_2_DUNGEONS.map((dungeon) => ({
+    ...dungeon,
+    items: dungeon.items.filter((item) => itemIsUsable(character, item)),
+  }));
+}
+
+function weaknessCandidatesForLootSlot(slot, weakGear) {
+  if (slot === 'ring') {
+    return weakGear.filter((item) => item.slot === 'finger_1' || item.slot === 'finger_2');
+  }
+
+  if (slot === 'trinket') {
+    return weakGear.filter((item) => item.slot === 'trinket_1' || item.slot === 'trinket_2');
+  }
+
+  return weakGear.filter((item) => item.slot === slot);
+}
+
+function bestTargetForLootItem(item, weakGear) {
+  const candidates = weaknessCandidatesForLootSlot(item.slot, weakGear)
+    .sort((a, b) => b.priority - a.priority || a.itemLevel - b.itemLevel);
+  return candidates[0] || null;
+}
+
+export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
+  const weakGear = gearWeaknesses(character, 16);
+  const usableLoot = usableLootForCharacter(character);
+  const farmKeyLevel = Math.max(2, Math.floor(Number(keyLevel) || 10));
+  const dropItemLevel = endOfDungeonItemLevel(farmKeyLevel);
+
+  const candidates = usableLoot.map((dungeon) => {
+    const itemMatches = dungeon.items
+      .map((item) => {
+        const target = bestTargetForLootItem(item, weakGear);
+        if (!target) return null;
+
+        const upgradeDelta = dropItemLevel - target.itemLevel;
+        if (upgradeDelta <= 0) return null;
+
+        return {
+          itemName: item.name,
+          lootSlot: item.slot,
+          targetSlot: target.slot,
+          targetLabel: target.label,
+          currentItem: target.name,
+          currentItemLevel: target.itemLevel,
+          baseline: target.baseline,
+          deficit: target.belowAverage,
+          slotPriority: target.priority,
+          dropItemLevel,
+          upgradeDelta,
+        };
+      })
+      .filter(Boolean);
+
+    // Multiple drops can target one slot. The dungeon earns slot value once so
+    // duplicate items do not artificially inflate its opportunity score.
+    const bestBySlot = new Map();
+    for (const match of itemMatches) {
+      const existing = bestBySlot.get(match.targetSlot);
+      if (
+        !existing ||
+        match.upgradeDelta > existing.upgradeDelta ||
+        (match.upgradeDelta === existing.upgradeDelta && match.slotPriority > existing.slotPriority)
+      ) {
+        bestBySlot.set(match.targetSlot, match);
+      }
+    }
+
+    const slotMatches = [...bestBySlot.values()]
+      .sort((a, b) =>
+        b.upgradeDelta - a.upgradeDelta ||
+        b.slotPriority - a.slotPriority ||
+        a.targetLabel.localeCompare(b.targetLabel)
+      );
+
+    // Weight the real item-level gain by how weak the slot is relative to the
+    // character's equipped average. The final score is then normalised to 0-100.
+    const upgradeCoverage = slotMatches.reduce(
+      (sum, match) => sum + (match.upgradeDelta * (0.5 + (match.slotPriority / 200))),
+      0
+    );
+    const breadthBonus = Math.min(12, Math.max(0, slotMatches.length - 1) * 2);
+    const rawGearOpportunity = upgradeCoverage + breadthBonus;
+
+    return {
+      name: dungeon.name,
+      shortName: dungeon.shortName,
+      rawGearOpportunity,
+      gearOpportunity: 0,
+      matchedSlots: slotMatches.length,
+      eligibleItems: dungeon.items.length,
+      matchingDrops: itemMatches.length,
+      farmKeyLevel,
+      dropItemLevel,
+      matches: itemMatches
+        .sort((a, b) =>
+          b.upgradeDelta - a.upgradeDelta ||
+          b.slotPriority - a.slotPriority ||
+          a.itemName.localeCompare(b.itemName)
+        ),
+      slotMatches,
+    };
+  });
+
+  const maxRaw = Math.max(0, ...candidates.map((dungeon) => dungeon.rawGearOpportunity));
+
+  return candidates
+    .map((dungeon) => ({
+      ...dungeon,
+      gearOpportunity: maxRaw > 0 ? (dungeon.rawGearOpportunity / maxRaw) * 100 : 0,
+    }))
+    .sort((a, b) =>
+      b.gearOpportunity - a.gearOpportunity ||
+      b.matchedSlots - a.matchedSlots ||
+      b.matchingDrops - a.matchingDrops ||
+      a.name.localeCompare(b.name)
+    );
+}
+
+export function bestGearFarm(character, options = {}) {
+  return dungeonLootOpportunities(character, options)[0] || null;
+}
+
 function priorityLabel(value) {
   if (value >= 75) return 'Very high';
   if (value >= 50) return 'High';
@@ -179,6 +325,20 @@ function gearRecommendation(item) {
   };
 }
 
+function farmRecommendation(dungeon) {
+  const slots = dungeon.slotMatches.slice(0, 4).map((match) => match.targetLabel).join(', ');
+  return {
+    key: `farm:${dungeon.shortName}`,
+    type: 'farm',
+    title: `Farm ${dungeon.name} at +${dungeon.farmKeyLevel}`,
+    detail: dungeon.matchedSlots
+      ? `Item level ${dungeon.dropItemLevel} loot can upgrade ${dungeon.matchedSlots} weak slot${dungeon.matchedSlots === 1 ? '' : 's'}${slots ? `: ${slots}` : ''}.`
+      : `No weak equipped slots are item-level upgrades from +${dungeon.farmKeyLevel} loot.`,
+    value: dungeon.gearOpportunity,
+    label: priorityLabel(dungeon.gearOpportunity),
+  };
+}
+
 function goalRecommendation(currentScore, targetScore, dungeonCount) {
   const gap = Math.max(0, Number(targetScore) - currentScore);
   if (gap <= 0 || targetScore <= 0) return null;
@@ -199,15 +359,18 @@ function goalRecommendation(currentScore, targetScore, dungeonCount) {
 }
 
 const STRATEGIES = {
-  balanced: { dungeon: 3, gear: 2 },
-  score: { dungeon: 4, gear: 1 },
-  gear: { dungeon: 1, gear: 4 },
+  balanced: { dungeon: 2, gear: 2, farm: 1 },
+  score: { dungeon: 4, gear: 1, farm: 0 },
+  gear: { dungeon: 0, gear: 3, farm: 2 },
 };
 
-export function buildRecommendations(character, { focus = 'balanced', targetScore = 3000 } = {}) {
+export function buildRecommendations(character, { focus = 'balanced', targetScore = 3000, farmKeyLevel = 10 } = {}) {
   const currentScore = getCurrentScore(character);
   const dungeonCandidates = dungeonOpportunities(character).map(dungeonRecommendation);
   const gearCandidates = gearWeaknesses(character).map(gearRecommendation);
+  const farmCandidates = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel })
+    .filter((dungeon) => dungeon.gearOpportunity > 0)
+    .map(farmRecommendation);
   const strategy = STRATEGIES[focus] || STRATEGIES.balanced;
   const selected = [];
   const used = new Set();
@@ -222,6 +385,7 @@ export function buildRecommendations(character, { focus = 'balanced', targetScor
     }
   }
 
+  take(farmCandidates, strategy.farm);
   take(dungeonCandidates, strategy.dungeon);
   take(gearCandidates, strategy.gear);
 
@@ -231,8 +395,7 @@ export function buildRecommendations(character, { focus = 'balanced', targetScor
     used.add(goal.key);
   }
 
-  // Fill any unused capacity without changing the focus-specific minimum mix.
-  const remaining = [...dungeonCandidates, ...gearCandidates]
+  const remaining = [...farmCandidates, ...dungeonCandidates, ...gearCandidates]
     .filter((candidate) => !used.has(candidate.key))
     .sort((a, b) => b.value - a.value);
 
@@ -260,6 +423,8 @@ export function buildAnalysis(character, options = {}) {
   const targetScore = Math.max(0, Number(options.targetScore) || 0);
   const progress = targetScore > 0 ? Math.min(1, currentScore / targetScore) : 0;
   const focus = STRATEGIES[options.focus] ? options.focus : 'balanced';
+  const farmKeyLevel = Math.max(2, Math.floor(Number(options.farmKeyLevel) || 10));
+  const lootDungeons = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel });
 
   return {
     currentScore,
@@ -270,6 +435,11 @@ export function buildAnalysis(character, options = {}) {
     runs: normaliseRuns(character),
     dungeons: dungeonOpportunities(character),
     weakGear: gearWeaknesses(character),
+    lootDungeons,
+    bestGearFarm: lootDungeons[0] || null,
+    farmKeyLevel,
+    farmDropItemLevel: endOfDungeonItemLevel(farmKeyLevel),
+    lootDataVersion: LOOT_DATA_VERSION,
     raids: raidSnapshot(character),
     recommendations: buildRecommendations(character, { ...options, focus }),
   };
