@@ -5,7 +5,9 @@ import {
   normaliseBlizzardEquipment,
   normaliseCharacterStatistics,
   normaliseItemSecondaryStats,
+  resolveSecondaryStats,
   slugifyRealm,
+  sumEquipmentSecondaryStats,
 } from '../functions/api/blizzard.js';
 
 test('slugifies a Blizzard realm name', () => {
@@ -128,4 +130,90 @@ test('normalises secondary stats from Blizzard preview item data', () => {
     mastery: 360,
     versatility: 0,
   });
+});
+
+
+test('skips zero-valued Blizzard stat variants when a populated variant exists', () => {
+  const stats = normaliseCharacterStatistics({
+    spell_crit: { rating: 0 },
+    melee_crit: { rating: 711 },
+    spell_haste: { rating: 0 },
+    melee_haste: { rating: 1240 },
+    mastery: { rating: 986 },
+    versatility: 326,
+  });
+
+  assert.deepEqual(stats, {
+    crit: 711,
+    haste: 1240,
+    mastery: 986,
+    versatility: 326,
+  });
+});
+
+test('accepts alternate Blizzard critical strike field names', () => {
+  const stats = normaliseCharacterStatistics({
+    spell_critical_strike: { rating: 444 },
+    haste_rating: 555,
+    mastery_rating: 666,
+    versatility_rating: 77,
+  });
+
+  assert.deepEqual(stats, {
+    crit: 444,
+    haste: 555,
+    mastery: 666,
+    versatility: 77,
+  });
+});
+
+test('sums secondary stats from normalized equipped Blizzard items', () => {
+  const raw = {
+    equipped_items: [
+      {
+        slot: { type: 'HEAD' },
+        item: { id: 1 },
+        name: 'Helm',
+        level: { value: 311 },
+        stats: [
+          { type: { type: 'HASTE_RATING' }, value: 210 },
+          { type: { type: 'MASTERY_RATING' }, value: 180 },
+        ],
+      },
+      {
+        slot: { type: 'WRIST' },
+        item: { id: 2 },
+        name: 'Bracers',
+        level: { value: 311 },
+        stats: [
+          { type: { type: 'CRITICAL_STRIKE_RATING' }, value: 90 },
+          { type: { type: 'VERSATILITY' }, value: 70 },
+        ],
+      },
+    ],
+  };
+
+  const items = normaliseBlizzardEquipment(raw);
+  assert.deepEqual(sumEquipmentSecondaryStats(items), {
+    crit: 90,
+    haste: 210,
+    mastery: 180,
+    versatility: 70,
+  });
+});
+
+test('fills missing character statistics from equipped item totals per stat', () => {
+  const resolved = resolveSecondaryStats(
+    { crit: 0, haste: 0, mastery: 0, versatility: 326 },
+    { crit: 711, haste: 1240, mastery: 986, versatility: 280 }
+  );
+
+  assert.deepEqual(resolved.ratings, {
+    crit: 711,
+    haste: 1240,
+    mastery: 986,
+    versatility: 326,
+  });
+  assert.deepEqual(resolved.fallbackStats, ['crit', 'haste', 'mastery']);
+  assert.equal(resolved.source, 'blended');
 });

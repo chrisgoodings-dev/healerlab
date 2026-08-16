@@ -54,14 +54,21 @@ function numericValue(...values) {
 }
 
 function nonNegativeValue(...values) {
+  // Blizzard can expose several variants of the same combat stat. Some variants
+  // may be present with a zero rating while another variant contains the actual
+  // rating. Prefer the first positive value and only fall back to zero if none
+  // of the supplied candidates are positive.
+  let sawZero = false;
   for (const candidate of values) {
     const raw = candidate && typeof candidate === 'object' && 'value' in candidate
       ? candidate.value
       : candidate;
     const number = Number(raw);
-    if (Number.isFinite(number) && number >= 0) return number;
+    if (!Number.isFinite(number) || number < 0) continue;
+    if (number > 0) return number;
+    sawZero = true;
   }
-  return 0;
+  return sawZero ? 0 : 0;
 }
 
 const ITEM_SECONDARY_STAT_TYPES = Object.freeze({
@@ -88,25 +95,80 @@ export function normaliseCharacterStatistics(raw = {}) {
   return {
     crit: nonNegativeValue(
       raw?.spell_crit?.rating,
+      raw?.spell_critical_strike?.rating,
       raw?.melee_crit?.rating,
+      raw?.melee_critical_strike?.rating,
       raw?.ranged_crit?.rating,
+      raw?.ranged_critical_strike?.rating,
       raw?.critical_strike?.rating,
-      raw?.crit_rating
+      raw?.critical_strike_rating,
+      raw?.crit?.rating,
+      raw?.crit_rating,
+      raw?.crit
     ),
     haste: nonNegativeValue(
       raw?.spell_haste?.rating,
       raw?.melee_haste?.rating,
       raw?.ranged_haste?.rating,
       raw?.haste?.rating,
-      raw?.haste_rating
+      raw?.haste_rating,
+      raw?.haste
     ),
-    mastery: nonNegativeValue(raw?.mastery?.rating, raw?.mastery_rating),
+    mastery: nonNegativeValue(
+      raw?.mastery?.rating,
+      raw?.mastery_rating,
+      raw?.mastery
+    ),
     versatility: nonNegativeValue(
       raw?.versatility?.rating,
-      raw?.versatility,
-      raw?.versatility_rating
+      raw?.versatility_rating,
+      raw?.versatility
     ),
   };
+}
+
+export function sumEquipmentSecondaryStats(items = []) {
+  const totals = { crit: 0, haste: 0, mastery: 0, versatility: 0 };
+  for (const item of Array.isArray(items) ? items : []) {
+    const stats = item?.secondaryStats || {};
+    for (const key of Object.keys(totals)) {
+      totals[key] += Math.max(0, Number(stats[key]) || 0);
+    }
+  }
+  return totals;
+}
+
+export function resolveSecondaryStats(statisticsRatings = {}, equipmentRatings = {}) {
+  const stats = normaliseCharacterStatistics({
+    crit: statisticsRatings?.crit,
+    haste: statisticsRatings?.haste,
+    mastery: statisticsRatings?.mastery,
+    versatility: statisticsRatings?.versatility,
+  });
+  const equipment = {
+    crit: Math.max(0, Number(equipmentRatings?.crit) || 0),
+    haste: Math.max(0, Number(equipmentRatings?.haste) || 0),
+    mastery: Math.max(0, Number(equipmentRatings?.mastery) || 0),
+    versatility: Math.max(0, Number(equipmentRatings?.versatility) || 0),
+  };
+
+  const ratings = {};
+  const fallbackStats = [];
+  for (const key of Object.keys(equipment)) {
+    if (stats[key] > 0 || equipment[key] <= 0) {
+      ratings[key] = stats[key];
+    } else {
+      ratings[key] = equipment[key];
+      fallbackStats.push(key);
+    }
+  }
+
+  const populated = Object.values(ratings).filter((value) => value > 0).length;
+  const source = fallbackStats.length
+    ? (populated ? 'blended' : 'equipment')
+    : 'character_statistics';
+
+  return { ratings, source, fallbackStats };
 }
 
 export function normaliseItemSecondaryStats(item = {}) {
@@ -170,6 +232,7 @@ export function normaliseBlizzardEquipment(raw = {}) {
         itemLevel,
         quality: entry?.quality?.type || entry?.quality?.name || null,
         iconUrl: null,
+        secondaryStats: normaliseItemSecondaryStats(entry),
       };
     })
     .filter((item) => item && item.itemLevel > 0);
@@ -208,6 +271,7 @@ export function mergeBlizzardEquipment(character, equipment) {
       item_id: official.itemId || Number(current.item_id) || null,
       icon_url: official.iconUrl || current.icon_url || null,
       quality: official.quality || current.quality || null,
+      secondary_stats: official.secondaryStats || current.secondary_stats || null,
       source: 'blizzard',
     };
   }
@@ -405,6 +469,7 @@ export async function fetchCharacterEquipment({ region, realm, name, env }) {
     state: 'ok',
     realmSlug,
     items,
+    secondaryStats: sumEquipmentSecondaryStats(items),
   };
 }
 
@@ -440,17 +505,29 @@ export async function enrichCharacterWithBlizzard(character, { region, realm, na
       });
 
   const statistics = statisticsResult.status === 'fulfilled' ? statisticsResult.value : null;
+  const equipment = equipmentResult.status === 'fulfilled' ? equipmentResult.value : null;
+  const resolvedStats = resolveSecondaryStats(
+    statistics?.ratings || {},
+    equipment?.secondaryStats || {}
+  );
+  const hasResolvedStats = Object.values(resolvedStats.ratings).some((value) => value > 0);
 
   return {
     ...merged,
-    secondary_stats: statistics?.ratings || merged.secondary_stats || null,
+    secondary_stats: hasResolvedStats ? resolvedStats.ratings : (merged.secondary_stats || null),
     healerlab_sources: {
       ...(merged.healerlab_sources || {}),
-      blizzard_statistics: statistics ? 'ok' : 'unavailable',
+      blizzard_statistics: statistics
+        ? (resolvedStats.fallbackStats.length ? 'blended' : 'ok')
+        : (hasResolvedStats ? 'equipment_fallback' : 'unavailable'),
     },
     blizzard: {
       ...(merged.blizzard || {}),
       statisticsAvailable: Boolean(statistics),
+      statisticsSource: statistics
+        ? resolvedStats.source
+        : (hasResolvedStats ? 'equipment' : 'unavailable'),
+      statisticsFallbackStats: resolvedStats.fallbackStats,
     },
   };
 }
