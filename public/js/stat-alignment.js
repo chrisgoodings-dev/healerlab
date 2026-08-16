@@ -38,10 +38,26 @@ function rowStatus(delta) {
   return 'poor';
 }
 
+function balanceStatus(delta) {
+  if (Math.abs(delta) <= 0.04) return 'within';
+  return delta < 0 ? 'below' : 'above';
+}
+
 function overallStatus(score) {
   if (score >= 92) return 'good';
   if (score >= 84) return 'warning';
   return 'poor';
+}
+
+function orderedStats(profile) {
+  const requested = Array.isArray(profile?.priorityOrder) ? profile.priorityOrder : [];
+  const valid = requested.filter((stat, index) =>
+    SECONDARY_STATS.includes(stat) && requested.indexOf(stat) === index
+  );
+  for (const stat of SECONDARY_STATS) {
+    if (!valid.includes(stat)) valid.push(stat);
+  }
+  return valid;
 }
 
 export function buildStatAlignment(character, { context = 'mythic_plus' } = {}) {
@@ -68,7 +84,8 @@ export function buildStatAlignment(character, { context = 'mythic_plus' } = {}) 
     };
   }
 
-  const rows = SECONDARY_STATS.map((stat) => {
+  const priorityOrder = orderedStats(profile);
+  const rows = priorityOrder.map((stat, priorityIndex) => {
     const currentShare = current.shares[stat];
     const targetShare = profile.shares[stat];
     const delta = currentShare - targetShare;
@@ -80,7 +97,10 @@ export function buildStatAlignment(character, { context = 'mythic_plus' } = {}) 
       targetShare,
       delta,
       status: rowStatus(delta),
+      balanceStatus: balanceStatus(delta),
       direction: Math.abs(delta) <= 0.04 ? 'aligned' : delta < 0 ? 'low' : 'high',
+      priorityIndex,
+      priorityRank: priorityIndex + 1,
     };
   });
 
@@ -94,6 +114,7 @@ export function buildStatAlignment(character, { context = 'mythic_plus' } = {}) 
     ratings,
     totalRating: current.total,
     shares: current.shares,
+    priorityOrder,
     rows,
     distance,
     score,
@@ -119,9 +140,20 @@ export function itemStatFit(itemStats, alignment) {
   const gaps = Object.fromEntries(
     SECONDARY_STATS.map((stat) => [stat, alignment.profile.shares[stat] - alignment.shares[stat]])
   );
-  const maxGap = Math.max(...SECONDARY_STATS.map((stat) => Math.abs(gaps[stat])), 0.0001);
+
+  const order = Array.isArray(alignment.priorityOrder) && alignment.priorityOrder.length
+    ? alignment.priorityOrder
+    : SECONDARY_STATS;
+  const priorityWeights = Object.fromEntries(
+    order.map((stat, index) => [stat, Math.max(0.55, 1 - (index * 0.15))])
+  );
+
+  const weightedGaps = Object.fromEntries(
+    SECONDARY_STATS.map((stat) => [stat, gaps[stat] * (priorityWeights[stat] || 0.55)])
+  );
+  const maxGap = Math.max(...SECONDARY_STATS.map((stat) => Math.abs(weightedGaps[stat])), 0.0001);
   const rawFit = SECONDARY_STATS.reduce(
-    (sum, stat) => sum + (item.shares[stat] * gaps[stat]),
+    (sum, stat) => sum + (item.shares[stat] * weightedGaps[stat]),
     0
   );
   const score = Math.max(-100, Math.min(100, (rawFit / maxGap) * 100));

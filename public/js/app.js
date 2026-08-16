@@ -112,29 +112,39 @@ function renderStatAlignment(alignment) {
 
   score.className = `stat-alignment-score ${alignment.status}`;
   score.textContent = `${Math.round(alignment.score)}/100`;
+
+  const suggestedOrder = alignment.rows.map((row) => row.label).join(' > ');
   summary.className = 'stat-alignment-summary';
-  summary.textContent = `${alignment.profile.context} observed target | ${alignment.profile.sample}`;
+  summary.textContent = `${alignment.profile.context} target | Suggested order: ${suggestedOrder}`;
 
   rows.innerHTML = alignment.rows.map((row) => {
     const deltaPoints = row.delta * 100;
-    const direction = row.direction === 'aligned'
-      ? 'ALIGNED'
-      : row.direction === 'low'
-        ? 'LOW'
-        : 'HIGH';
     const sign = deltaPoints > 0 ? '+' : '';
+    const state = row.balanceStatus === 'within'
+      ? 'IN RANGE'
+      : row.balanceStatus === 'below'
+        ? 'BELOW TARGET'
+        : 'ABOVE TARGET';
 
     return `
-      <div class="stat-alignment-row">
-        <div class="stat-name"><strong>${escapeHtml(row.label)}</strong><span>${Math.round(row.rating).toLocaleString()} rating</span></div>
-        <div class="stat-share"><span>Current</span><strong>${(row.currentShare * 100).toFixed(1)}%</strong></div>
-        <div class="stat-share"><span>Target</span><strong>${(row.targetShare * 100).toFixed(1)}%</strong></div>
-        <div class="stat-gap ${row.status}"><strong>${sign}${deltaPoints.toFixed(1)}pp</strong><span>${direction}</span></div>
+      <div class="stat-alignment-row stat-${escapeHtml(row.stat)} balance-${escapeHtml(row.balanceStatus)}">
+        <div class="stat-name stat-${escapeHtml(row.stat)}">
+          <strong>${escapeHtml(row.label)}</strong>
+          <span class="stat-current">${Math.round(row.rating).toLocaleString()} (${(row.currentShare * 100).toFixed(2)}%)</span>
+        </div>
+        <div class="stat-target">
+          <span>Suggested share</span>
+          <strong>${(row.targetShare * 100).toFixed(2)}%</strong>
+        </div>
+        <div class="stat-gap ${escapeHtml(row.balanceStatus)}">
+          <strong>${sign}${deltaPoints.toFixed(1)}pp</strong>
+          <span>${state}</span>
+        </div>
       </div>
     `;
   }).join('');
 
-  note.textContent = `Reference snapshot ${alignment.profile.snapshot}. This is an observed distribution, not a simulation-derived perfect stat weight. Green is within 4 percentage points of target, amber within 8, and red is more than 8 points away.`;
+  note.textContent = `Reference snapshot ${alignment.profile.snapshot}. Stats are shown in the suggested priority order for the selected activity. Blue means more of that stat is suggested, green is within +/-4 percentage points of target, and red means the current allocation is above the suggested range. The stat names themselves use fixed Haste, Mastery, Critical Strike and Versatility colours.`;
 }
 
 function itemStatNames(stats) {

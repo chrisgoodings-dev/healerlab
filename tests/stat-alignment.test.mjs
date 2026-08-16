@@ -107,3 +107,69 @@ test('secondary-stat fit changes the priority of otherwise equivalent dungeon up
   assert.ok(murderRow.matches[0].statFitScore > 0);
   assert.ok(blindingVale.matches[0].statFitScore < 0);
 });
+
+// Secondary-stat ordered display regression tests.
+test('restoration druid uses requested raid and mythic plus priority orders', () => {
+  const character = { class: 'Druid', active_spec_name: 'Restoration' };
+  assert.deepEqual(
+    getStatProfile(character, 'raid').priorityOrder,
+    ['haste', 'mastery', 'versatility', 'crit']
+  );
+  assert.deepEqual(
+    getStatProfile(character, 'mythic_plus').priorityOrder,
+    ['mastery', 'haste', 'versatility', 'crit']
+  );
+});
+
+test('every healer reference profile exposes four unique ordered secondary stats', () => {
+  for (const key of supportedStatProfiles()) {
+    const [className, specName] = key.split(':');
+    const character = { class: className, active_spec_name: specName };
+    for (const context of ['raid', 'mythic_plus']) {
+      const order = getStatProfile(character, context).priorityOrder;
+      assert.equal(order.length, 4);
+      assert.equal(new Set(order).size, 4);
+      assert.deepEqual(
+        [...order].sort(),
+        ['crit', 'haste', 'mastery', 'versatility'].sort()
+      );
+    }
+  }
+});
+
+test('alignment rows follow the activity priority order', () => {
+  const character = {
+    class: 'Druid',
+    active_spec_name: 'Restoration',
+    secondary_stats: { crit: 300, haste: 1000, mastery: 900, versatility: 250 },
+  };
+
+  const raid = buildStatAlignment(character, { context: 'raid' });
+  const mythicPlus = buildStatAlignment(character, { context: 'mythic_plus' });
+
+  assert.deepEqual(raid.rows.map((row) => row.stat), ['haste', 'mastery', 'versatility', 'crit']);
+  assert.deepEqual(mythicPlus.rows.map((row) => row.stat), ['mastery', 'haste', 'versatility', 'crit']);
+});
+
+test('allocation state is blue-below, green-within and red-above compatible', () => {
+  const character = {
+    class: 'Druid',
+    active_spec_name: 'Restoration',
+    secondary_stats: { crit: 1200, haste: 200, mastery: 350, versatility: 250 },
+  };
+
+  const alignment = buildStatAlignment(character, { context: 'raid' });
+  const crit = alignment.rows.find((row) => row.stat === 'crit');
+  const haste = alignment.rows.find((row) => row.stat === 'haste');
+
+  assert.equal(crit.balanceStatus, 'above');
+  assert.equal(haste.balanceStatus, 'below');
+
+  const targetCharacter = {
+    class: 'Druid',
+    active_spec_name: 'Restoration',
+    secondary_stats: { ...getStatProfile({ class: 'Druid', active_spec_name: 'Restoration' }, 'raid').ratings },
+  };
+  const target = buildStatAlignment(targetCharacter, { context: 'raid' });
+  assert.ok(target.rows.every((row) => row.balanceStatus === 'within'));
+});

@@ -368,3 +368,110 @@ input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0
   .stat-name { grid-column: 1 / -1; }
   .stat-gap { justify-self: stretch; text-align: left; }
 }
+
+/* Secondary-stat ordered cards v2 */
+:root {
+  --stat-haste: #15b051;
+  --stat-mastery: #1f9fe5;
+  --stat-crit: #fe8538;
+  --stat-versatility: #a44aa2;
+  --stat-below: #1f9fe5;
+  --stat-within: #15b051;
+  --stat-above: #ed312f;
+}
+
+.stat-alignment-rows {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.stat-alignment-row {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto 1fr;
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.stat-name {
+  grid-column: auto;
+  gap: 5px;
+}
+
+.stat-name strong {
+  font-size: .98rem;
+}
+
+.stat-name .stat-current {
+  font-size: .88rem;
+  font-weight: 800;
+}
+
+.stat-name.stat-haste strong,
+.stat-name.stat-haste .stat-current { color: var(--stat-haste); }
+
+.stat-name.stat-mastery strong,
+.stat-name.stat-mastery .stat-current { color: var(--stat-mastery); }
+
+.stat-name.stat-crit strong,
+.stat-name.stat-crit .stat-current { color: var(--stat-crit); }
+
+.stat-name.stat-versatility strong,
+.stat-name.stat-versatility .stat-current { color: var(--stat-versatility); }
+
+.stat-target {
+  display: grid;
+  gap: 3px;
+}
+
+.stat-target span {
+  color: var(--muted);
+  font-size: .64rem;
+}
+
+.stat-target strong {
+  font-size: .84rem;
+}
+
+.stat-gap {
+  justify-self: stretch;
+  align-self: end;
+  min-width: 0;
+  text-align: left;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.stat-gap.below strong,
+.stat-gap.below span { color: var(--stat-below); }
+
+.stat-gap.within strong,
+.stat-gap.within span { color: var(--stat-within); }
+
+.stat-gap.above strong,
+.stat-gap.above span { color: var(--stat-above); }
+
+.stat-alignment-row.balance-below {
+  border-color: rgba(31, 159, 229, .30);
+  background: rgba(31, 159, 229, .045);
+}
+
+.stat-alignment-row.balance-within {
+  border-color: rgba(21, 176, 81, .30);
+  background: rgba(21, 176, 81, .045);
+}
+
+.stat-alignment-row.balance-above {
+  border-color: rgba(237, 49, 47, .30);
+  background: rgba(237, 49, 47, .045);
+}
+
+@media (max-width: 900px) {
+  .stat-alignment-rows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .stat-alignment-rows { grid-template-columns: 1fr; }
+}
+

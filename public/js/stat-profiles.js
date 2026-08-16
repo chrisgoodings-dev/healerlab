@@ -125,6 +125,40 @@ const PROFILES = Object.freeze({
   }),
 });
 
+// Suggested secondary-stat priority order is intentionally separate from the
+// observed target distribution. This lets HealerLab show a practical gearing
+// order without pretending the population average is a marginal stat weight.
+const PRIORITY_ORDERS = Object.freeze({
+  'Druid:Restoration': Object.freeze({
+    raid: Object.freeze(['haste', 'mastery', 'versatility', 'crit']),
+    mythic_plus: Object.freeze(['mastery', 'haste', 'versatility', 'crit']),
+  }),
+  'Evoker:Preservation': Object.freeze({
+    raid: Object.freeze(['mastery', 'crit', 'haste', 'versatility']),
+    mythic_plus: Object.freeze(['mastery', 'haste', 'crit', 'versatility']),
+  }),
+  'Monk:Mistweaver': Object.freeze({
+    raid: Object.freeze(['haste', 'crit', 'versatility', 'mastery']),
+    mythic_plus: Object.freeze(['haste', 'crit', 'versatility', 'mastery']),
+  }),
+  'Paladin:Holy': Object.freeze({
+    raid: Object.freeze(['mastery', 'haste', 'crit', 'versatility']),
+    mythic_plus: Object.freeze(['mastery', 'haste', 'crit', 'versatility']),
+  }),
+  'Priest:Discipline': Object.freeze({
+    raid: Object.freeze(['haste', 'crit', 'mastery', 'versatility']),
+    mythic_plus: Object.freeze(['haste', 'crit', 'versatility', 'mastery']),
+  }),
+  'Priest:Holy': Object.freeze({
+    raid: Object.freeze(['crit', 'mastery', 'versatility', 'haste']),
+    mythic_plus: Object.freeze(['versatility', 'crit', 'haste', 'mastery']),
+  }),
+  'Shaman:Restoration': Object.freeze({
+    raid: Object.freeze(['crit', 'versatility', 'haste', 'mastery']),
+    mythic_plus: Object.freeze(['crit', 'haste', 'versatility', 'mastery']),
+  }),
+});
+
 export function statProfileKey(character) {
   const className = String(character?.class || '').trim();
   const specName = String(character?.active_spec_name || '').trim();
@@ -132,9 +166,19 @@ export function statProfileKey(character) {
 }
 
 export function getStatProfile(character, context = 'mythic_plus') {
-  const profiles = PROFILES[statProfileKey(character)];
+  const key = statProfileKey(character);
+  const profiles = PROFILES[key];
   if (!profiles) return null;
-  return profiles[context === 'raid' ? 'raid' : 'mythic_plus'] || null;
+
+  const mode = context === 'raid' ? 'raid' : 'mythic_plus';
+  const selected = profiles[mode] || null;
+  if (!selected) return null;
+
+  return {
+    ...selected,
+    priorityOrder: PRIORITY_ORDERS[key]?.[mode] || SECONDARY_STATS,
+    prioritySource: 'Midnight healer guide priority',
+  };
 }
 
 export function supportedStatProfiles() {
