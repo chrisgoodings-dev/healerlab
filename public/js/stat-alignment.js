@@ -49,6 +49,33 @@ function overallStatus(score) {
   return 'poor';
 }
 
+
+
+function alignmentScoreForRatings(ratings, profile) {
+  const current = sharesFor(ratings);
+  if (!profile || current.total <= 0) {
+    return {
+      available: false,
+      score: 0,
+      distance: 1,
+      shares: current.shares,
+      totalRating: current.total,
+    };
+  }
+
+  const distance = 0.5 * SECONDARY_STATS.reduce(
+    (sum, stat) => sum + Math.abs(current.shares[stat] - profile.shares[stat]),
+    0
+  );
+
+  return {
+    available: true,
+    score: Math.max(0, Math.min(100, (1 - distance) * 100)),
+    distance,
+    shares: current.shares,
+    totalRating: current.total,
+  };
+}
 function orderedStats(profile) {
   const requested = Array.isArray(profile?.priorityOrder) ? profile.priorityOrder : [];
   const valid = requested.filter((stat, index) =>
@@ -104,8 +131,9 @@ export function buildStatAlignment(character, { context = 'mythic_plus' } = {}) 
     };
   });
 
-  const distance = 0.5 * rows.reduce((sum, row) => sum + Math.abs(row.delta), 0);
-  const score = Math.max(0, Math.min(100, (1 - distance) * 100));
+  const scored = alignmentScoreForRatings(ratings, profile);
+  const distance = scored.distance;
+  const score = scored.score;
 
   return {
     available: true,
@@ -184,3 +212,89 @@ export function itemStatFit(itemStats, alignment) {
     shares: item.shares,
   };
 }
+
+export function replacementStatFit(candidateStats, currentItemStats, alignment) {
+  const candidateRatings = normaliseSecondaryStats(candidateStats || {});
+  const currentItemRatings = normaliseSecondaryStats(currentItemStats || {});
+  const candidate = sharesFor(candidateRatings);
+  const currentItem = sharesFor(currentItemRatings);
+  const candidateFit = itemStatFit(candidateStats, alignment);
+
+  if (!alignment?.available || candidate.total <= 0) {
+    return {
+      ...candidateFit,
+      replacementAvailable: false,
+      projectedAlignmentScore: alignment?.score ?? 0,
+      alignmentGain: 0,
+      candidateFitScore: candidateFit.score,
+      label: candidateFit.label,
+    };
+  }
+
+  // If the currently equipped item does not expose usable secondary ratings,
+  // fall back to candidate-only fit. The item-level calculation still applies
+  // independently in the gear planner.
+  if (currentItem.total <= 0) {
+    return {
+      ...candidateFit,
+      replacementAvailable: false,
+      projectedAlignmentScore: alignment.score,
+      alignmentGain: 0,
+      candidateFitScore: candidateFit.score,
+      label: candidateFit.label,
+    };
+  }
+
+  // Compare composition at the current item's stat budget. This deliberately
+  // isolates secondary-stat balance from item level, which is scored elsewhere.
+  // It answers: if this slot kept the same total secondary budget but changed to
+  // the candidate's stat distribution, would the whole character move closer to
+  // the selected Raid/M+ target?
+  const projectedRatings = {};
+  for (const stat of SECONDARY_STATS) {
+    const removed = currentItemRatings[stat];
+    const replacement = candidate.shares[stat] * currentItem.total;
+    projectedRatings[stat] = Math.max(0, alignment.ratings[stat] - removed + replacement);
+  }
+
+  const projected = alignmentScoreForRatings(projectedRatings, alignment.profile);
+  const alignmentGain = projected.score - alignment.score;
+
+  // +/-10 alignment-score points is enough to reach the existing +/-25% cap.
+  // Smaller improvements scale proportionally; item level remains dominant.
+  const modifierDelta = Math.max(-0.25, Math.min(0.25, alignmentGain / 40));
+  const multiplier = 1 + modifierDelta;
+
+  let label = 'Neutral replacement';
+  let status = 'neutral';
+  if (alignmentGain >= 4) {
+    label = 'Excellent balance upgrade';
+    status = 'good';
+  } else if (alignmentGain >= 1) {
+    label = 'Improves stat balance';
+    status = 'good';
+  } else if (alignmentGain <= -4) {
+    label = 'Worsens stat balance';
+    status = 'poor';
+  } else if (alignmentGain <= -1) {
+    label = 'Slightly worse balance';
+    status = 'warning';
+  }
+
+  return {
+    available: true,
+    replacementAvailable: true,
+    score: candidateFit.score,
+    candidateFitScore: candidateFit.score,
+    multiplier,
+    label,
+    status,
+    shares: candidate.shares,
+    currentItemShares: currentItem.shares,
+    projectedShares: projected.shares,
+    projectedRatings,
+    projectedAlignmentScore: projected.score,
+    alignmentGain,
+  };
+}
+

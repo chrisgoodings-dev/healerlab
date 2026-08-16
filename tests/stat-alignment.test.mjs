@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStatAlignment, itemStatFit } from '../public/js/stat-alignment.js';
+import { buildStatAlignment, itemStatFit, replacementStatFit } from '../public/js/stat-alignment.js';
 import { getStatProfile, supportedStatProfiles } from '../public/js/stat-profiles.js';
 import { dungeonLootOpportunities } from '../public/js/analysis.js';
 import { demoCharacter } from '../public/js/demo-data.js';
@@ -173,3 +173,73 @@ test('allocation state is blue-below, green-within and red-above compatible', ()
   const target = buildStatAlignment(targetCharacter, { context: 'raid' });
   assert.ok(target.rows.every((row) => row.balanceStatus === 'within'));
 });
+
+test('replacement stat analysis rewards swapping an overrepresented ring into preferred stats', () => {
+  const character = {
+    class: 'Druid',
+    active_spec_name: 'Restoration',
+    secondary_stats: { crit: 900, haste: 450, mastery: 350, versatility: 300 },
+  };
+  const alignment = buildStatAlignment(character, { context: 'mythic_plus' });
+
+  const preferred = replacementStatFit(
+    { haste: 500, mastery: 500 },
+    { crit: 500, versatility: 500 },
+    alignment
+  );
+  const poor = replacementStatFit(
+    { crit: 500, versatility: 500 },
+    { crit: 500, versatility: 500 },
+    alignment
+  );
+
+  assert.equal(preferred.replacementAvailable, true);
+  assert.ok(preferred.alignmentGain > poor.alignmentGain);
+  assert.ok(preferred.projectedAlignmentScore > poor.projectedAlignmentScore);
+  assert.ok(preferred.multiplier > poor.multiplier);
+});
+
+test('only the best stat-balanced item per weak slot is exposed as a dungeon recommendation', () => {
+  const character = structuredClone(demoCharacter);
+  character.gear.item_level_equipped = 310;
+  for (const item of Object.values(character.gear.items)) item.item_level = 311;
+  character.gear.items.finger_1 = {
+    item_level: 290,
+    name: 'Current Crit Vers Ring',
+    secondary_stats: { crit: 500, versatility: 500 },
+  };
+  character.gear.items.finger_2.item_level = 311;
+  character.secondary_stats = { crit: 900, haste: 450, mastery: 350, versatility: 300 };
+  character.official_dungeon_loot = [
+    {
+      name: 'Temple of Sethraliss',
+      journalInstanceId: 99,
+      items: [
+        {
+          id: 2001,
+          name: 'Jade Ophidian Band',
+          secondaryStats: { haste: 520, mastery: 480 },
+        },
+        {
+          id: 2002,
+          name: 'Charged Sandstone Band',
+          secondaryStats: { crit: 520, versatility: 480 },
+        },
+      ],
+    },
+  ];
+
+  const opportunities = dungeonLootOpportunities(character, {
+    keyLevel: 10,
+    statContext: 'mythic_plus',
+  });
+  const temple = opportunities.find((dungeon) => dungeon.name === 'Temple of Sethraliss');
+
+  assert.equal(temple.candidateDrops, 2);
+  assert.equal(temple.recommendedMatches.length, 1);
+  assert.equal(temple.matches.length, 1);
+  assert.equal(temple.recommendedMatches[0].itemName, 'Jade Ophidian Band');
+  assert.ok(temple.recommendedMatches[0].alignmentGain > 0);
+  assert.equal(temple.candidateMatches.some((item) => item.itemName === 'Charged Sandstone Band'), true);
+});
+

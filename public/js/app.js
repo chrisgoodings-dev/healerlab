@@ -197,7 +197,8 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
     .map((match) => `${match.targetLabel} +${match.upgradeDelta}`)
     .join(', ');
 
-  const topItems = best.matches.slice(0, 5).map((match) => {
+  const recommendedMatches = best.recommendedMatches || best.matches || [];
+  const topItems = recommendedMatches.slice(0, 5).map((match) => {
     const gearIcon = match.currentIconUrl
       ? `<img class="loot-gear-icon" src="${escapeHtml(match.currentIconUrl)}" alt="" loading="lazy" />`
       : '<span class="loot-gear-icon loot-gear-icon-fallback" aria-hidden="true">+</span>';
@@ -205,8 +206,11 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
     const stats = itemStatNames(match.itemSecondaryStats);
     const fitScore = Number(match.statFitScore) || 0;
     const fitSign = fitScore > 0 ? '+' : '';
+    const alignmentChange = match.replacementAnalysisAvailable
+      ? ` | alignment ${Number(match.projectedAlignmentScore).toFixed(1)}/100 (${match.alignmentGain >= 0 ? '+' : ''}${Number(match.alignmentGain).toFixed(1)})`
+      : '';
     const fit = match.statFitLabel && match.statFitLabel !== 'No stat signal'
-      ? `<small class="loot-stat-fit ${escapeHtml(match.statFitStatus || 'neutral')}">${stats.length ? `${escapeHtml(stats.join(' / '))} | ` : ''}${escapeHtml(match.statFitLabel)} (${fitSign}${Math.round(fitScore)})</small>`
+      ? `<small class="loot-stat-fit ${escapeHtml(match.statFitStatus || 'neutral')}">${stats.length ? `${escapeHtml(stats.join(' / '))} | ` : ''}${escapeHtml(match.statFitLabel)} (${fitSign}${Math.round(fitScore)})${escapeHtml(alignmentChange)}</small>`
       : '';
 
     return `
@@ -214,7 +218,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
         ${gearIcon}
         <div>
           <strong>${escapeHtml(match.itemName)}</strong>
-          <span>${escapeHtml(match.targetLabel)} | ${match.currentItemLevel} -> ${match.dropItemLevel} (+${match.upgradeDelta} ilvl)${official}</span>
+          <span>Recommended ${escapeHtml(match.targetLabel)} target | ${match.currentItemLevel} -> ${match.dropItemLevel} (+${match.upgradeDelta} ilvl)${official}</span>
           ${fit}
         </div>
       </li>
@@ -242,7 +246,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
       ${instanceIcon(dungeon, 'loot-instance-icon-small')}
       <div>
         <strong>${escapeHtml(dungeon.name)}</strong>
-        <span>${dungeon.matchedSlots} weak-slot upgrade${dungeon.matchedSlots === 1 ? '' : 's'} | ${dungeon.matchingDrops} matching drop${dungeon.matchingDrops === 1 ? '' : 's'}${dungeon.journalInstanceId ? ` | Journal ${dungeon.journalInstanceId}` : ''}</span>
+        <span>${dungeon.matchedSlots} recommended target${dungeon.matchedSlots === 1 ? '' : 's'}${Number(dungeon.candidateDrops) > dungeon.matchedSlots ? ` | ${dungeon.candidateDrops} candidates compared` : ''}${dungeon.journalInstanceId ? ` | Journal ${dungeon.journalInstanceId}` : ''}</span>
       </div>
       <strong>${Math.round(dungeon.gearOpportunity)}</strong>
     </div>
@@ -250,7 +254,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
 
   const officialCount = dungeons.filter((dungeon) => dungeon.officialSource).length;
   const statAdjusted = dungeons.some((dungeon) => dungeon.statAlignmentAvailable);
-  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeon identities were enriched from the Blizzard Journal API. Score uses +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot coverage and slot weakness${statAdjusted ? ', with Blizzard item secondary-stat composition applying a capped +/-25% stat-fit modifier' : ''}. Curated healer eligibility remains a safety layer.`;
+  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeon identities were enriched from the Blizzard Journal API. For each weak slot, HealerLab compares every eligible drop and recommends only the candidate with the strongest combined item-level and stat-balance replacement value. Score uses +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot severity and coverage${statAdjusted ? ', with secondary-stat replacement value capped to a +/-25% modifier so item level remains dominant' : ''}. Curated healer eligibility remains a safety layer.`;
 }
 
 function renderRecommendations(recommendations) {

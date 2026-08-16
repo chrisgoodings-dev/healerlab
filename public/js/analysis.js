@@ -1,6 +1,6 @@
 import { CLASS_ARMOR, HEALER_CLASSES, LOOT_DATA_VERSION, SEASON_2_DUNGEONS, endOfDungeonItemLevel } from './loot-data.js';
 import { enrichCuratedDungeonsWithOfficial } from './official-loot.js';
-import { buildStatAlignment, itemStatFit } from './stat-alignment.js';
+import { buildStatAlignment, replacementStatFit } from './stat-alignment.js';
 
 const SLOT_LABELS = {
   head: 'Head',
@@ -65,6 +65,7 @@ export function normaliseGear(character) {
       itemId: Number(item.item_id || item.id) || null,
       iconUrl: item.icon_url || null,
       quality: item.quality || null,
+      secondaryStats: item.secondary_stats || null,
       source: item.source || 'raider.io',
     }));
 }
@@ -218,12 +219,16 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
         const upgradeDelta = dropItemLevel - target.itemLevel;
         if (upgradeDelta <= 0) return null;
 
-        const statFit = itemStatFit(item.secondaryStats, statAlignment);
-        const upgradeValue = (
-          upgradeDelta *
-          (0.5 + (target.priority / 200)) *
-          statFit.multiplier
+        const statFit = replacementStatFit(
+          item.secondaryStats,
+          target.secondaryStats,
+          statAlignment
         );
+        const baseUpgradeValue = (
+          upgradeDelta *
+          (0.5 + (target.priority / 200))
+        );
+        const upgradeValue = baseUpgradeValue * statFit.multiplier;
 
         return {
           itemName: item.name,
@@ -235,6 +240,9 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
           statFitMultiplier: statFit.multiplier,
           statFitLabel: statFit.label,
           statFitStatus: statFit.status,
+          replacementAnalysisAvailable: statFit.replacementAvailable === true,
+          projectedAlignmentScore: Number(statFit.projectedAlignmentScore) || null,
+          alignmentGain: Number(statFit.alignmentGain) || 0,
           lootSlot: item.slot,
           targetSlot: target.slot,
           targetLabel: target.label,
@@ -245,8 +253,10 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
           baseline: target.baseline,
           deficit: target.belowAverage,
           slotPriority: target.priority,
+          currentSecondaryStats: target.secondaryStats || null,
           dropItemLevel,
           upgradeDelta,
+          baseUpgradeValue,
           upgradeValue,
         };
       })
@@ -260,9 +270,22 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
       if (
         !existing ||
         match.upgradeValue > existing.upgradeValue ||
-        (match.upgradeValue === existing.upgradeValue && match.upgradeDelta > existing.upgradeDelta) ||
+        (match.upgradeValue === existing.upgradeValue && match.alignmentGain > existing.alignmentGain) ||
         (
           match.upgradeValue === existing.upgradeValue &&
+          match.alignmentGain === existing.alignmentGain &&
+          match.statFitScore > existing.statFitScore
+        ) ||
+        (
+          match.upgradeValue === existing.upgradeValue &&
+          match.alignmentGain === existing.alignmentGain &&
+          match.statFitScore === existing.statFitScore &&
+          match.upgradeDelta > existing.upgradeDelta
+        ) ||
+        (
+          match.upgradeValue === existing.upgradeValue &&
+          match.alignmentGain === existing.alignmentGain &&
+          match.statFitScore === existing.statFitScore &&
           match.upgradeDelta === existing.upgradeDelta &&
           match.slotPriority > existing.slotPriority
         )
@@ -274,6 +297,8 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
     const slotMatches = [...bestBySlot.values()]
       .sort((a, b) =>
         b.upgradeValue - a.upgradeValue ||
+        b.alignmentGain - a.alignmentGain ||
+        b.statFitScore - a.statFitScore ||
         b.upgradeDelta - a.upgradeDelta ||
         b.slotPriority - a.slotPriority ||
         a.targetLabel.localeCompare(b.targetLabel)
@@ -300,13 +325,21 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
       gearOpportunity: 0,
       matchedSlots: slotMatches.length,
       eligibleItems: dungeon.items.length,
-      matchingDrops: itemMatches.length,
+      candidateDrops: itemMatches.length,
+      matchingDrops: slotMatches.length,
       farmKeyLevel,
       dropItemLevel,
       statAlignmentAvailable: statAlignment.available === true,
-      matches: itemMatches
+      // Public/UI-facing matches are deliberately restricted to the single best
+      // candidate for each weak slot. All alternatives are retained separately
+      // for diagnostics/tests but do not appear as recommendations.
+      matches: slotMatches,
+      recommendedMatches: slotMatches,
+      candidateMatches: itemMatches
         .sort((a, b) =>
           b.upgradeValue - a.upgradeValue ||
+          b.alignmentGain - a.alignmentGain ||
+          b.statFitScore - a.statFitScore ||
           b.upgradeDelta - a.upgradeDelta ||
           b.slotPriority - a.slotPriority ||
           a.itemName.localeCompare(b.itemName)
@@ -326,6 +359,7 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
       b.gearOpportunity - a.gearOpportunity ||
       b.matchedSlots - a.matchedSlots ||
       b.matchingDrops - a.matchingDrops ||
+      b.candidateDrops - a.candidateDrops ||
       a.name.localeCompare(b.name)
     );
 }
@@ -369,10 +403,11 @@ function gearRecommendation(item) {
 }
 
 function farmRecommendation(dungeon) {
-  const slots = dungeon.slotMatches.slice(0, 4).map((match) => match.targetLabel).join(', ');
-  const bestStatFit = dungeon.matches.find((match) => match.statFitScore >= 10);
+  const recommended = dungeon.recommendedMatches || dungeon.slotMatches || [];
+  const slots = recommended.slice(0, 4).map((match) => match.targetLabel).join(', ');
+  const bestStatFit = recommended[0] || null;
   const statDetail = bestStatFit
-    ? ` Best stat match: ${bestStatFit.itemName} (${bestStatFit.statFitLabel.toLowerCase()}).`
+    ? ` Best target: ${bestStatFit.itemName} for ${bestStatFit.targetLabel.toLowerCase()} (${bestStatFit.statFitLabel.toLowerCase()}${bestStatFit.replacementAnalysisAvailable ? `, ${bestStatFit.alignmentGain >= 0 ? '+' : ''}${bestStatFit.alignmentGain.toFixed(1)} alignment` : ''}).`
     : '';
 
   return {
