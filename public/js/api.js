@@ -71,3 +71,22 @@ export async function fetchItemDetails(region, itemId, { signal } = {}) {
 
   return payload;
 }
+
+export async function fetchWowheadBis(className, specName, { signal } = {}) {
+  const query = new URLSearchParams({ class: className, spec: specName });
+  const response = await fetch(`/api/wowhead-bis?${query.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      state: 'unavailable',
+      currentSeason: false,
+      bis: [],
+      mythicPlus: [],
+      message: payload?.message || `Wowhead lookup failed (${response.status}).`,
+    };
+  }
+  return payload;
+}

@@ -1371,3 +1371,214 @@ h4,
   }
 }
 /* END BIS-AWARE-GEARING */
+
+/* BEGIN CATHEDRAL-WOWHEAD-THEME */
+:root {
+  --bg: #0B1326;
+  --bg-alt: #0E1A34;
+  --surface: #131B2E;
+  --surface-2: #18243B;
+  --surface-3: #0F182A;
+  --border: #2A3650;
+  --text-primary: #F6F3E8;
+  --text-secondary: #9BA6B8;
+  --text-muted: #748197;
+  --accent: #22D3C5;
+  --accent-2: #1E3A8A;
+  --accent-soft: rgba(34, 211, 197, 0.12);
+  --warning: #F2C14E;
+  --success: #36D399;
+  --info: #22D3C5;
+  --arcane: #7C6AED;
+  --danger: #FF6B7A;
+  --cathedral-gold: #F2C14E;
+  --cathedral-gold-soft: rgba(242, 193, 78, 0.13);
+  --cathedral-line: rgba(242, 193, 78, 0.32);
+  --midnight-sapphire: #1E3A8A;
+}
+
+body {
+  background:
+    radial-gradient(circle at 8% 5%, rgba(30, 58, 138, 0.35), transparent 34%),
+    radial-gradient(circle at 92% 8%, rgba(34, 211, 197, 0.10), transparent 28%),
+    radial-gradient(circle at 80% 76%, rgba(124, 106, 237, 0.10), transparent 32%),
+    linear-gradient(180deg, #071020 0%, #0B1326 46%, #081120 100%);
+  color: var(--text-primary);
+}
+
+.topbar,
+.card,
+.panel,
+.hero-summary,
+.hero-visual,
+.stat-card,
+.encounter-card,
+.class-panel {
+  background: linear-gradient(180deg, rgba(19, 27, 46, 0.97), rgba(10, 19, 37, 0.98));
+  border-color: rgba(242, 193, 78, 0.22);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.27), inset 0 0 0 1px rgba(255,255,255,0.018);
+}
+
+.topbar,
+.site-header {
+  border-bottom-color: rgba(242, 193, 78, 0.30);
+}
+
+.brand,
+.brand h1,
+h1,
+h2,
+h3,
+h4,
+.class-summary-copy h3,
+.playbook-heading h3 {
+  font-family: var(--font-display, 'Cinzel', Georgia, serif);
+}
+
+.eyebrow,
+.current-content-type,
+.encounter-code,
+.loot-best-label,
+.playbook-context,
+.mini-label {
+  color: var(--cathedral-gold);
+}
+
+button[type="submit"],
+.btn-primary,
+.primary-button {
+  color: #071020;
+  background: linear-gradient(180deg, #F8D66A, #D9A82E);
+  border-color: #F2C14E;
+  box-shadow: 0 8px 22px rgba(242, 193, 78, 0.18);
+}
+
+button[type="submit"]:hover,
+.btn-primary:hover,
+.primary-button:hover {
+  filter: brightness(1.06);
+}
+
+.class-summary-copy {
+  background:
+    radial-gradient(circle at 90% 12%, rgba(242, 193, 78, 0.11), transparent 28%),
+    radial-gradient(circle at 78% 90%, rgba(34, 211, 197, 0.08), transparent 30%),
+    linear-gradient(135deg, #111D35, #0B1428 72%);
+  border-color: rgba(242, 193, 78, 0.38);
+}
+
+.class-summary-copy h3 {
+  color: #FFF5D8;
+  text-shadow: 0 1px 14px rgba(242, 193, 78, 0.08);
+}
+
+.class-summary-season > span,
+.playbook-context,
+.mini-label {
+  border-color: rgba(242, 193, 78, 0.32);
+  background: rgba(242, 193, 78, 0.06);
+}
+
+.stat-alignment-card,
+.bis-plan-card,
+.loot-planner-card,
+.encounter-planner-card,
+.spec-playbook-card {
+  border-color: rgba(242, 193, 78, 0.22);
+}
+
+.bis-plan-card {
+  background:
+    radial-gradient(circle at 94% 8%, rgba(34, 211, 197, 0.08), transparent 27%),
+    linear-gradient(180deg, rgba(18, 29, 52, 0.98), rgba(9, 18, 34, 0.99));
+}
+
+.bis-plan-row,
+.loot-dungeon-row,
+.gear-row,
+.raid-row {
+  border-color: rgba(242, 193, 78, 0.13);
+  background: rgba(8, 18, 35, 0.48);
+}
+
+.bis-source-highlight {
+  border-color: rgba(242, 193, 78, 0.58) !important;
+  box-shadow: 0 0 0 1px rgba(242, 193, 78, 0.09) inset, 0 0 28px rgba(242, 193, 78, 0.08);
+}
+
+.source-bis-badge,
+.source-mplus-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.source-bis-badge {
+  color: #FFE39A;
+  border: 1px solid rgba(242, 193, 78, 0.42);
+  background: rgba(242, 193, 78, 0.09);
+}
+
+.source-mplus-badge {
+  color: #75F1E3;
+  border: 1px solid rgba(34, 211, 197, 0.34);
+  background: rgba(34, 211, 197, 0.07);
+}
+
+.wowhead-bis-row .wowhead-bis-item {
+  color: #FFF0BE;
+  text-decoration: none;
+}
+
+.wowhead-bis-row .wowhead-bis-item:hover {
+  color: #FFFFFF;
+  text-decoration: underline;
+}
+
+.bis-badge.bis-source-live {
+  color: #FFE39A;
+  border-color: rgba(242, 193, 78, 0.44);
+  background: rgba(242, 193, 78, 0.09);
+}
+
+.bis-source-warning {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(242, 193, 78, 0.28);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  background: rgba(242, 193, 78, 0.055);
+}
+
+.bis-source-warning strong {
+  color: #FFE39A;
+}
+
+.encounter-card.recommended::before {
+  background: linear-gradient(90deg, transparent, #F2C14E, var(--class-accent), transparent);
+}
+
+.encounter-priority,
+.loot-score strong,
+.score-ring strong {
+  color: #F2C14E;
+}
+
+.stat-name.stat-haste strong { color: #22D3C5; }
+.stat-name.stat-mastery strong { color: #7C6AED; }
+.stat-name.stat-crit strong { color: #F2C14E; }
+.stat-name.stat-versatility strong { color: #8AC6FF; }
+
+::selection {
+  color: #081120;
+  background: #F2C14E;
+}
+/* END CATHEDRAL-WOWHEAD-THEME */

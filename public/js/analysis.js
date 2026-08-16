@@ -4,6 +4,7 @@ import { buildStatAlignment, replacementStatFit } from './stat-alignment.js';
 
 import { MIDNIGHT_SEASON_2, currentSeasonState, isMidnightSeason2ScoreEntry, normaliseContentName, seasonDungeonFor } from './season-12-1.js';
 import { buildPersonalDungeonBis, effectiveItemStats, getBisMatch, mergeBisGearPriorities } from './bis.js';
+import { annotateDungeonLootWithWowhead } from './wowhead-bis.js';
 const SLOT_LABELS = {
   head: 'Head',
   neck: 'Neck',
@@ -267,7 +268,7 @@ function normaliseWeaponType(value) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/s+/g, ' ');
+    .replace(/\s+/g, ' ');
 
   const aliases = {
     'daggers': 'dagger',
@@ -527,7 +528,7 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
 
   const maxRaw = Math.max(0, ...candidates.map((dungeon) => dungeon.rawGearOpportunity));
 
-  return candidates
+  const ranked = candidates
     .map((dungeon) => ({
       ...dungeon,
       gearOpportunity: maxRaw > 0 ? (dungeon.rawGearOpportunity / maxRaw) * 100 : 0,
@@ -539,6 +540,8 @@ export function dungeonLootOpportunities(character, { keyLevel = 10, statContext
       b.candidateDrops - a.candidateDrops ||
       a.name.localeCompare(b.name)
     );
+
+  return annotateDungeonLootWithWowhead(ranked, character?.wowhead_bis);
 }
 
 export function bestGearFarm(character, options = {}) {
@@ -706,7 +709,7 @@ export function buildAnalysis(character, options = {}) {
   const bisProfileForAnalysis = buildPersonalDungeonBis(
     character,
     usableLootForCharacter(character),
-    { statAlignment }
+    { statAlignment, statContext }
   );
   const bisAwareGear = mergeBisGearPriorities(
     gearWeaknesses(character, 16),
@@ -729,6 +732,7 @@ export function buildAnalysis(character, options = {}) {
     dungeons: dungeonOpportunities(character),
     weakGear: bisAwareGear,
     bisProfile: bisProfileForAnalysis,
+    wowheadBis: character?.wowhead_bis || null,
     lootDungeons,
     bestGearFarm: lootDungeons[0] || null,
     farmKeyLevel,

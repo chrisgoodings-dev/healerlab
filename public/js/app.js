@@ -1,10 +1,11 @@
-import { fetchCharacter, fetchOfficialSeasonLoot } from './api.js';
+import { fetchCharacter, fetchOfficialSeasonLoot, fetchWowheadBis } from './api.js';
 import { buildAnalysis } from './analysis.js';
 import { demoCharacter } from './demo-data.js';
 import { setupItemTooltips } from './item-tooltips.js';
 
 import { getHealerPlaybook } from './healer-priority.js';
 import { MIDNIGHT_SEASON_2 } from './season-12-1.js';
+import { usableWowheadGuide, wowheadSourceSummary } from './wowhead-bis.js';
 const $ = (selector) => document.querySelector(selector);
 const form = $('#character-form');
 const formMessage = $('#form-message');
@@ -86,8 +87,9 @@ function setState(state, message = '') {
   formMessage.classList.toggle('error', state === 'error');
 }
 
-function renderRaid(raids) {
+function renderRaid(raids, wowheadBis = null) {
   const container = $('#raid-progress');
+  const guide = wowheadSourceSummary(wowheadBis);
 
   if (!raids.length) {
     container.className = 'raid-progress empty-state';
@@ -96,21 +98,30 @@ function renderRaid(raids) {
   }
 
   container.className = 'raid-progress current-season-raid-progress';
-  container.innerHTML = raids.map((raid) => `
-    <div class="raid-row current-raid-row">
-      <div class="raid-current-copy">
-        <span class="current-content-type">${raid.isLair ? 'SEASON 2 LAIR' : 'SEASON 2 RAID'}</span>
-        <strong>${escapeHtml(raid.name)}</strong>
+  container.innerHTML = raids.map((raid) => {
+    const guideCount = raid.isLair ? guide.lair : guide.raid;
+    const guideBadge = guide.available && guideCount > 0
+      ? `<span class="source-bis-badge">WOWHEAD BiS &times;${guideCount}</span>`
+      : '';
+
+    return `
+      <div class="raid-row current-raid-row${guideBadge ? ' bis-source-highlight' : ''}">
+        <div class="raid-current-copy">
+          <span class="current-content-type">${raid.isLair ? 'SEASON 2 LAIR' : 'SEASON 2 RAID'}</span>
+          <strong>${escapeHtml(raid.name)}</strong>
+          ${guideBadge}
+        </div>
+        <span>${escapeHtml(raid.summary)}</span>
       </div>
-      <span>${escapeHtml(raid.summary)}</span>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
-function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null) {
+function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null, wowheadBis = null) {
   const container = $('#dungeon-list');
   const normalise = (value) => clean(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
   const lootByName = new Map();
+  const guide = wowheadSourceSummary(wowheadBis);
 
   for (const dungeon of lootDungeons || []) {
     lootByName.set(normalise(dungeon.name), dungeon);
@@ -118,25 +129,22 @@ function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null) {
   }
 
   const seasonNotice = seasonStatus && !seasonStatus.mythicPlusOpen
-    ? `
-      <div class="season-notice">
-        <strong>Patch 12.1 pool loaded.</strong>
-        Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}.
-        Outgoing Season 1 runs are intentionally ignored, so unrun Season 2 dungeons show as open progression targets.
-      </div>
-    `
-    : `
-      <div class="season-notice live">
-        <strong>Midnight Season 2 is active.</strong>
-        The progression map is restricted to the eight Patch 12.1 dungeons and current-season best runs.
-      </div>
-    `;
+    ? `<div class="season-notice"><strong>Patch 12.1 pool loaded.</strong> Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}.</div>`
+    : `<div class="season-notice live"><strong>Midnight Season 2 is active.</strong> Current-season score, Blizzard loot and verified Wowhead BiS sources are combined.</div>`;
 
   const cards = dungeons.map((run, index) => {
     const loot = lootByName.get(normalise(run.dungeon)) || lootByName.get(normalise(run.shortName));
     const gearOpportunity = Math.round(Number(loot?.gearOpportunity) || 0);
     const scoreOpportunity = Math.round(Number(run.opportunity) || 0);
     const combined = Math.round((scoreOpportunity * 0.55) + (gearOpportunity * 0.45));
+    const guideEntry = guide.dungeons.get(clean(run.dungeon).toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim());
+    const wowheadCount = Number(loot?.wowheadBisTargets || guideEntry?.bis || 0);
+    const mplusCount = Number(loot?.wowheadMythicTargets || guideEntry?.mythicPlus || 0);
+    const guideBadge = wowheadCount > 0
+      ? `<span class="source-bis-badge">BiS &times;${wowheadCount}</span>`
+      : mplusCount > 0
+        ? `<span class="source-mplus-badge">M+ target &times;${mplusCount}</span>`
+        : '';
 
     const icon = loot?.instanceIconUrl
       ? `<img class="encounter-icon" src="${escapeHtml(loot.instanceIconUrl)}" alt="" loading="lazy" />`
@@ -150,33 +158,22 @@ function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null) {
       ? `<a class="encounter-link" href="${escapeHtml(run.url)}" target="_blank" rel="noreferrer">Open run</a>`
       : '<span class="encounter-link muted">Current-season baseline needed</span>';
 
-    const valueLabel = !run.hasRun
-      ? 'OPEN TARGET'
-      : combined >= 70
-        ? 'HIGH VALUE'
-        : combined >= 35
-          ? 'USEFUL'
-          : 'STABLE';
+    const valueLabel = !run.hasRun ? 'OPEN TARGET' : combined >= 70 ? 'HIGH VALUE' : combined >= 35 ? 'USEFUL' : 'STABLE';
 
     return `
-      <article class="encounter-card${index === 0 ? ' recommended' : ''}${run.hasRun ? '' : ' unrun'}">
-        <div class="encounter-card-top">
-          ${icon}
-          <div class="encounter-rank">#${index + 1}</div>
-        </div>
+      <article class="encounter-card${index === 0 ? ' recommended' : ''}${run.hasRun ? '' : ' unrun'}${guideBadge ? ' bis-source-highlight' : ''}">
+        <div class="encounter-card-top">${icon}<div class="encounter-rank">#${index + 1}</div></div>
         <div class="encounter-copy">
           <span class="encounter-code">PATCH 12.1 | ${escapeHtml(run.shortName)}</span>
           <h4>${escapeHtml(run.dungeon)}</h4>
           <p>${escapeHtml(progressLine)}</p>
+          ${guideBadge}
         </div>
         <div class="encounter-metrics">
           <span><small>Score opportunity</small><strong>${scoreOpportunity}</strong></span>
           <span><small>Gear opportunity</small><strong>${gearOpportunity}</strong></span>
         </div>
-        <div class="encounter-footer">
-          <span class="encounter-priority">${valueLabel}</span>
-          ${runLink}
-        </div>
+        <div class="encounter-footer"><span class="encounter-priority">${valueLabel}</span>${runLink}</div>
       </article>
     `;
   }).join('');
@@ -540,40 +537,75 @@ function renderPlaybook(character, context) {
   note.textContent = `Updated for the Midnight 12.1 baseline (${playbook.dataVersion}). This is a conditional healer priority framework, not a fixed cast sequence; talents and encounter damage patterns can change the correct choice.`;
 }
 
-function renderBisPlan(profile) {
+function renderBisPlan(profile, wowheadBis = null) {
   const container = $('#bis-plan-list');
   const score = $('#bis-plan-score');
   const note = $('#bis-plan-note');
   if (!container || !score || !note) return;
 
-  if (!profile?.available) {
-    score.textContent = '-';
-    container.innerHTML = '<p class="empty-state">No rankable Blizzard dungeon items were returned. HealerLab now accepts either scaled secondary-stat ratings or Blizzard stat-type composition.</p>';
-    note.textContent = profile?.note || '';
+  if (usableWowheadGuide(wowheadBis)) {
+    score.textContent = `${wowheadBis.bis.length} items | Wowhead`;
+    const rows = wowheadBis.bis.map((item) => {
+      const source = item.source || {};
+      const sourceClass = source.kind === 'raid' || source.kind === 'lair' || source.kind === 'dungeon'
+        ? 'bis-source-live'
+        : 'bis-source-system';
+      const sourceLabel = source.boss
+        ? `${source.boss} | ${source.instance}`
+        : source.instance || item.sourceText || 'Other source';
+      const itemLink = item.itemId
+        ? `https://www.wowhead.com/item=${item.itemId}`
+        : wowheadBis.sourceUrl;
+
+      return `
+        <div class="bis-plan-row wowhead-bis-row">
+          <span class="bis-slot">${escapeHtml(item.slotLabel || item.slot)}</span>
+          <div>
+            <a class="wowhead-bis-item" href="${escapeHtml(itemLink)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.itemName)}</strong></a>
+            <small>${escapeHtml(sourceLabel)}</small>
+          </div>
+          <span class="bis-badge ${sourceClass}">${source.kind === 'dungeon' ? 'DUNGEON' : source.kind === 'raid' ? 'RAID' : source.kind === 'lair' ? 'LAIR' : 'BiS'}</span>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = rows;
+    note.innerHTML = `Verified current-season BiS guide from <a href="${escapeHtml(wowheadBis.sourceUrl)}" target="_blank" rel="noreferrer">Wowhead</a>. HealerLab uses the guide as an external BiS signal and keeps the Blizzard/stat model for character-specific replacement value.`;
     return;
   }
 
-  score.textContent = `${profile.rankedSlots} slots | Blizzard`;
+  if (wowheadBis?.state === 'stale') {
+    const stale = `<div class="bis-source-warning"><strong>Wowhead guide not yet Season 2.</strong> The retrieved guide still points at older content, so HealerLab refuses to mix it into the 12.1 farming plan.</div>`;
+    container.innerHTML = stale;
+  }
+
+  if (!profile?.available) {
+    score.textContent = '-';
+    if (wowheadBis?.state !== 'stale') {
+      container.innerHTML = '<p class="empty-state">No current Wowhead BiS list or rankable personal Blizzard BiS is available yet.</p>';
+    }
+    note.textContent = wowheadBis?.message || profile?.note || '';
+    return;
+  }
+
+  score.textContent = `${profile.rankedSlots} slots | Personal`;
   const labelBySlot = {
-    head: 'Head', neck: 'Neck', shoulder: 'Shoulders', back: 'Back',
-    chest: 'Chest', wrist: 'Wrists', hands: 'Hands', waist: 'Waist',
-    legs: 'Legs', feet: 'Feet', finger_1: 'Ring 1', finger_2: 'Ring 2',
-    main_hand: 'Main hand', off_hand: 'Off hand'
+    head: 'Head', neck: 'Neck', shoulder: 'Shoulders', back: 'Back', chest: 'Chest',
+    wrist: 'Wrists', hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet',
+    finger_1: 'Ring 1', finger_2: 'Ring 2', main_hand: 'Main hand', off_hand: 'Off hand'
   };
 
-  container.innerHTML = profile.best
+  const personal = profile.best
     .sort((a, b) => a.slot.localeCompare(b.slot))
     .map((item) => `
       <div class="bis-plan-row">
         <span class="bis-slot">${escapeHtml(labelBySlot[item.slot] || item.slot)}</span>
-        <div>
-          <strong>${escapeHtml(item.itemName)}</strong>
-          <small>${escapeHtml(item.dungeonName)} | ${escapeHtml(item.fitLabel)}${item.alignmentGain ? ` | ${item.alignmentGain >= 0 ? '+' : ''}${item.alignmentGain.toFixed(1)} alignment` : ''} | ${escapeHtml(item.statDataSource || 'Blizzard')}</small>
-        </div>
-        <span class="bis-badge">BiS</span>
+        <div><strong>${escapeHtml(item.itemName)}</strong><small>${escapeHtml(item.dungeonName)} | ${escapeHtml(item.fitLabel)}</small></div>
+        <span class="bis-badge">PERSONAL</span>
       </div>
     `).join('');
 
+  container.innerHTML = (wowheadBis?.state === 'stale' ? container.innerHTML : '') + personal;
   note.textContent = profile.note;
 }
 
@@ -628,11 +660,11 @@ function renderCharacter(character, options) {
   const profileLink = $('#profile-link');
   profileLink.href = character.profile_url || 'https://raider.io/';
 
-  renderRaid(analysis.raids);
-  renderDungeons(analysis.dungeons, analysis.lootDungeons, analysis.season);
+  renderRaid(analysis.raids, analysis.wowheadBis);
+  renderDungeons(analysis.dungeons, analysis.lootDungeons, analysis.season, analysis.wowheadBis);
   renderGear(analysis.weakGear, character.region || $('#region').value);
   renderStatAlignment(analysis.statAlignment);
-  renderBisPlan(analysis.bisProfile);
+  renderBisPlan(analysis.bisProfile, analysis.wowheadBis);
   renderLootPlanner(analysis.lootDungeons, {
     version: analysis.lootDataVersion,
     keyLevel: analysis.farmKeyLevel,
@@ -698,9 +730,16 @@ async function analyseLiveCharacter(event) {
     ]);
 
     character.official_dungeon_loot = officialLoot.dungeons;
+    const wowheadBis = await fetchWowheadBis(character.class, character.active_spec_name, {
+      signal: activeController.signal,
+    }).catch((error) => ({
+      state: 'unavailable', currentSeason: false, bis: [], mythicPlus: [], message: error?.message || 'Wowhead lookup failed.'
+    }));
+    character.wowhead_bis = wowheadBis;
     character.healerlab_sources = {
       ...(character.healerlab_sources || {}),
       blizzard_journal: officialLoot.resolved > 0 ? 'ok' : 'fallback',
+      wowhead_bis: wowheadBis.state,
     };
 
     renderCharacter(character, currentOptions());
