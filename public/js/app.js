@@ -3,6 +3,8 @@ import { buildAnalysis } from './analysis.js';
 import { demoCharacter } from './demo-data.js';
 import { setupItemTooltips } from './item-tooltips.js';
 
+import { getHealerPlaybook } from './healer-priority.js';
+import { MIDNIGHT_SEASON_2 } from './season-12-1.js';
 const $ = (selector) => document.querySelector(selector);
 const form = $('#character-form');
 const formMessage = $('#form-message');
@@ -86,68 +88,100 @@ function setState(state, message = '') {
 
 function renderRaid(raids) {
   const container = $('#raid-progress');
+
   if (!raids.length) {
     container.className = 'raid-progress empty-state';
-    container.textContent = 'No current public raid progression was returned.';
+    container.textContent = 'No Midnight Season 2 raid content is available.';
     return;
   }
-  container.className = 'raid-progress';
+
+  container.className = 'raid-progress current-season-raid-progress';
   container.innerHTML = raids.map((raid) => `
-    <div class="raid-row">
-      <strong>${escapeHtml(raid.name)}</strong>
+    <div class="raid-row current-raid-row">
+      <div class="raid-current-copy">
+        <span class="current-content-type">${raid.isLair ? 'SEASON 2 LAIR' : 'SEASON 2 RAID'}</span>
+        <strong>${escapeHtml(raid.name)}</strong>
+      </div>
       <span>${escapeHtml(raid.summary)}</span>
     </div>
   `).join('');
 }
 
-function renderDungeons(dungeons, lootDungeons = []) {
+function renderDungeons(dungeons, lootDungeons = [], seasonStatus = null) {
   const container = $('#dungeon-list');
-  if (!dungeons.length) {
-    container.innerHTML = '<p class="empty-state">No Mythic+ best-run data was returned.</p>';
-    return;
-  }
-
   const normalise = (value) => clean(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
   const lootByName = new Map();
+
   for (const dungeon of lootDungeons || []) {
     lootByName.set(normalise(dungeon.name), dungeon);
     lootByName.set(normalise(dungeon.shortName), dungeon);
   }
 
-  container.innerHTML = dungeons.map((run, index) => {
+  const seasonNotice = seasonStatus && !seasonStatus.mythicPlusOpen
+    ? `
+      <div class="season-notice">
+        <strong>Patch 12.1 pool loaded.</strong>
+        Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}.
+        Outgoing Season 1 runs are intentionally ignored, so unrun Season 2 dungeons show as open progression targets.
+      </div>
+    `
+    : `
+      <div class="season-notice live">
+        <strong>Midnight Season 2 is active.</strong>
+        The progression map is restricted to the eight Patch 12.1 dungeons and current-season best runs.
+      </div>
+    `;
+
+  const cards = dungeons.map((run, index) => {
     const loot = lootByName.get(normalise(run.dungeon)) || lootByName.get(normalise(run.shortName));
     const gearOpportunity = Math.round(Number(loot?.gearOpportunity) || 0);
     const scoreOpportunity = Math.round(Number(run.opportunity) || 0);
     const combined = Math.round((scoreOpportunity * 0.55) + (gearOpportunity * 0.45));
+
     const icon = loot?.instanceIconUrl
       ? `<img class="encounter-icon" src="${escapeHtml(loot.instanceIconUrl)}" alt="" loading="lazy" />`
       : `<span class="encounter-icon encounter-icon-fallback" aria-hidden="true">${escapeHtml(run.shortName.slice(0, 2))}</span>`;
+
+    const progressLine = run.hasRun
+      ? `Best +${run.level} | ${run.score.toFixed(1)} Season 2 score`
+      : 'No Season 2 run recorded';
+
     const runLink = run.url
       ? `<a class="encounter-link" href="${escapeHtml(run.url)}" target="_blank" rel="noreferrer">Open run</a>`
-      : '<span class="encounter-link muted">No run link</span>';
+      : '<span class="encounter-link muted">Current-season baseline needed</span>';
+
+    const valueLabel = !run.hasRun
+      ? 'OPEN TARGET'
+      : combined >= 70
+        ? 'HIGH VALUE'
+        : combined >= 35
+          ? 'USEFUL'
+          : 'STABLE';
 
     return `
-      <article class="encounter-card${index === 0 ? ' recommended' : ''}">
+      <article class="encounter-card${index === 0 ? ' recommended' : ''}${run.hasRun ? '' : ' unrun'}">
         <div class="encounter-card-top">
           ${icon}
           <div class="encounter-rank">#${index + 1}</div>
         </div>
         <div class="encounter-copy">
-          <span class="encounter-code">${escapeHtml(run.shortName)}</span>
+          <span class="encounter-code">PATCH 12.1 | ${escapeHtml(run.shortName)}</span>
           <h4>${escapeHtml(run.dungeon)}</h4>
-          <p>Best +${run.level} | ${run.score.toFixed(1)} score</p>
+          <p>${escapeHtml(progressLine)}</p>
         </div>
         <div class="encounter-metrics">
           <span><small>Score opportunity</small><strong>${scoreOpportunity}</strong></span>
           <span><small>Gear opportunity</small><strong>${gearOpportunity}</strong></span>
         </div>
         <div class="encounter-footer">
-          <span class="encounter-priority">${combined >= 70 ? 'High value' : combined >= 35 ? 'Useful' : 'Stable'}</span>
+          <span class="encounter-priority">${valueLabel}</span>
           ${runLink}
         </div>
       </article>
     `;
   }).join('');
+
+  container.innerHTML = seasonNotice + cards;
 }
 
 function itemTooltipAttributes({ itemId, region, name, itemLevel, stats = {} }) {
@@ -284,7 +318,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel, region 
   const versionElement = $('#loot-version');
   const best = dungeons[0];
 
-  versionElement.textContent = `Season 2 | +${keyLevel} drops ${dropItemLevel}`;
+  versionElement.textContent = `Midnight S2 | Patch 12.1 | +${keyLevel} drops ${dropItemLevel}`;
 
   const instanceIcon = (dungeon, className = 'loot-instance-icon') => dungeon?.instanceIconUrl
     ? `<img class="${className}" src="${escapeHtml(dungeon.instanceIconUrl)}" alt="" loading="lazy" />`
@@ -429,6 +463,75 @@ function applyClassPresentation(character) {
   if (summaryText) summaryText.textContent = summary.text;
 }
 
+function renderSeasonSummary(analysis) {
+  const title = $('#season-summary-title');
+  const text = $('#season-summary-text');
+  const badge = $('#season-summary-badge');
+
+  if (badge) badge.textContent = `PATCH ${analysis.season?.patch || '12.1'}`;
+  if (title) title.textContent = analysis.season?.label || 'Midnight Season 2';
+
+  if (text) {
+    const status = analysis.season?.mythicPlusOpen
+      ? 'Mythic+ active'
+      : `Mythic+ opens ${analysis.season?.mythicPlusOpens || '2026-08-19'}`;
+
+    text.textContent = `${analysis.season?.dungeonCount || 8} dungeons | ${analysis.season?.raidName || MIDNIGHT_SEASON_2.raid.name} (${analysis.season?.raidBosses || 8} bosses) | ${status}`;
+  }
+}
+
+function renderPlaybook(character, context) {
+  const title = $('#playbook-title');
+  const intro = $('#playbook-intro');
+  const contextLabel = $('#playbook-context');
+  const priorities = $('#spell-priority-list');
+  const rotation = $('#rotation-list');
+  const cooldowns = $('#cooldown-notes');
+  const note = $('#playbook-note');
+
+  if (!title || !intro || !contextLabel || !priorities || !rotation || !cooldowns || !note) return;
+
+  const playbook = getHealerPlaybook(character, context);
+
+  if (!playbook) {
+    title.textContent = 'Suggested spell priority';
+    intro.textContent = 'No healer playbook is available for this specialization.';
+    contextLabel.textContent = 'PATCH 12.1';
+    priorities.innerHTML = '';
+    rotation.innerHTML = '';
+    cooldowns.innerHTML = '';
+    note.textContent = '';
+    return;
+  }
+
+  title.textContent = `${playbook.spec} playbook`;
+  intro.textContent = playbook.title;
+  contextLabel.textContent = `${playbook.contextLabel.toUpperCase()} | PATCH ${playbook.patch}`;
+
+  priorities.innerHTML = playbook.priority.map(([spell, use], index) => `
+    <li class="priority-row">
+      <span class="priority-index">${index + 1}</span>
+      <div>
+        <strong>${escapeHtml(spell)}</strong>
+        <p>${escapeHtml(use)}</p>
+      </div>
+    </li>
+  `).join('');
+
+  rotation.innerHTML = playbook.rotation.map((step, index) => `
+    <li class="rotation-step">
+      <span>${String(index + 1).padStart(2, '0')}</span>
+      <p>${escapeHtml(step)}</p>
+    </li>
+  `).join('');
+
+  cooldowns.innerHTML = playbook.cooldowns.map((item) => `
+    <li>${escapeHtml(item)}</li>
+  `).join('');
+
+  note.textContent = `Updated for the Midnight 12.1 baseline (${playbook.dataVersion}). This is a conditional healer priority framework, not a fixed cast sequence; talents and encounter damage patterns can change the correct choice.`;
+}
+
 function renderCharacter(character, options) {
   const analysis = buildAnalysis(character, options);
   const score = analysis.currentScore;
@@ -437,6 +540,8 @@ function renderCharacter(character, options) {
   const itemLevel = Number(character?.gear?.item_level_equipped || character?.gear?.item_level_total || 0);
 
   applyClassPresentation(character);
+  renderSeasonSummary(analysis);
+  renderPlaybook(character, analysis.statContext);
 
   $('#character-name').textContent = character.name || 'Unknown character';
   $('#character-role').textContent = character.active_spec_role || 'HEALER';
@@ -459,12 +564,15 @@ function renderCharacter(character, options) {
   $('#score-meter').style.width = `${Math.min(100, progressPct)}%`;
   $('#score-ring').style.setProperty('--progress', `${Math.min(360, analysis.progress * 360)}deg`);
 
-  if (analysis.scoreGap > 0) {
-    $('#score-summary').textContent = `You are ${Math.round(analysis.scoreGap).toLocaleString()} rating from the target. The planner favours weaker dungeons where progression is less developed.`;
-    $('#score-detail').textContent = `${Math.round(score).toLocaleString()} current rating | ${target.toLocaleString()} target`;
+  if (!analysis.season?.mythicPlusOpen) {
+    $('#score-summary').textContent = `${analysis.season.label} Mythic+ has not opened yet, so outgoing Season 1 rating is intentionally excluded from this 12.1 planner.`;
+    $('#score-detail').textContent = `Current pool loaded | Mythic+ opens ${analysis.season.mythicPlusOpens}`;
+  } else if (analysis.scoreGap > 0) {
+    $('#score-summary').textContent = `You are ${Math.round(analysis.scoreGap).toLocaleString()} rating from the target. The planner favours current Season 2 dungeons where progression is least developed.`;
+    $('#score-detail').textContent = `${Math.round(score).toLocaleString()} Season 2 rating | ${target.toLocaleString()} target`;
   } else {
-    $('#score-summary').textContent = 'You have met or exceeded this target. Raise the goal to keep the progression analysis useful.';
-    $('#score-detail').textContent = `${Math.round(score).toLocaleString()} current rating`;
+    $('#score-summary').textContent = 'You have met or exceeded this Season 2 target. Raise the goal to keep the progression analysis useful.';
+    $('#score-detail').textContent = `${Math.round(score).toLocaleString()} Season 2 rating`;
   }
 
   const initials = (character.name || 'HL').slice(0, 2).toUpperCase();
@@ -476,7 +584,7 @@ function renderCharacter(character, options) {
   profileLink.href = character.profile_url || 'https://raider.io/';
 
   renderRaid(analysis.raids);
-  renderDungeons(analysis.dungeons, analysis.lootDungeons);
+  renderDungeons(analysis.dungeons, analysis.lootDungeons, analysis.season);
   renderGear(analysis.weakGear, character.region || $('#region').value);
   renderStatAlignment(analysis.statAlignment);
   renderLootPlanner(analysis.lootDungeons, {

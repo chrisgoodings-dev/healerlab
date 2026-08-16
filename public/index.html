@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="HealerLab turns World of Warcraft character data into an explainable Mythic+ improvement plan." />
   <title>HealerLab | WoW Healer Progression Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -19,6 +22,7 @@
     <nav class="nav-links" aria-label="Primary navigation">
       <a href="#analyse">Analyse</a>
       <a href="#encounters">Encounters</a>
+      <a href="#playbook">Playbook</a>
       <a href="#method">Method</a>
       <a href="#about">About</a>
     </nav>
@@ -148,6 +152,11 @@
               <p class="eyebrow" id="class-summary-kicker">CLASS FOCUS</p>
               <h3 id="class-summary-title">Heal with insight. Lead with knowledge.</h3>
               <p id="class-summary-text">Load a healer to turn this panel into a spec-specific progression summary.</p>
+              <div class="class-summary-season">
+                <span id="season-summary-badge">PATCH 12.1</span>
+                <strong id="season-summary-title">Midnight Season 2</strong>
+                <small id="season-summary-text">8 dungeons | The Venomous Abyss | current-season progression only</small>
+              </div>
             </div>
           </section>
 
@@ -176,6 +185,49 @@
               <small>secondary-stat fit</small>
               <div class="overview-stat-spark" aria-hidden="true"></div>
             </article>
+          </section>
+
+
+          <section class="card spec-playbook-card" id="playbook">
+            <div class="playbook-heading">
+              <div>
+                <p class="eyebrow">HEALER PLAYBOOK</p>
+                <h3 id="playbook-title">Suggested spell priority</h3>
+                <p id="playbook-intro">Load a healer to see a spec- and activity-specific priority framework.</p>
+              </div>
+              <span id="playbook-context" class="playbook-context">PATCH 12.1</span>
+            </div>
+
+            <div class="playbook-grid">
+              <div class="playbook-column">
+                <div class="playbook-section-title">
+                  <span>01</span>
+                  <div>
+                    <small>SPELL PRIORITY</small>
+                    <strong>What should I press first?</strong>
+                  </div>
+                </div>
+                <ol id="spell-priority-list" class="priority-list"></ol>
+              </div>
+
+              <div class="playbook-column rotation-column">
+                <div class="playbook-section-title">
+                  <span>02</span>
+                  <div>
+                    <small>RESPONSE PATTERN</small>
+                    <strong>How the sequence fits together</strong>
+                  </div>
+                </div>
+                <ol id="rotation-list" class="rotation-list"></ol>
+
+                <div class="cooldown-panel">
+                  <small>COOLDOWN NOTES</small>
+                  <ul id="cooldown-notes"></ul>
+                </div>
+              </div>
+            </div>
+
+            <p id="playbook-note" class="playbook-note"></p>
           </section>
 
           <section class="overview-grid">
@@ -254,9 +306,9 @@
               <div>
                 <p class="eyebrow">ENCOUNTER PLANNER</p>
                 <h3>Dungeon progression map</h3>
-                <p class="encounter-intro">See the weakest score opportunities beside the gear value of each dungeon, then choose runs that improve more than one part of your character.</p>
+                <p class="encounter-intro">Current Patch 12.1 pool only. Score opportunity is calculated from Midnight Season 2 best runs; outgoing Season 1 records are deliberately excluded.</p>
               </div>
-              <span class="mini-label">MYTHIC+</span>
+              <span class="mini-label">PATCH 12.1</span>
             </div>
             <div id="dungeon-list" class="dungeon-list encounter-grid"></div>
           </section>

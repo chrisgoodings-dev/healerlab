@@ -2,6 +2,7 @@ import { CLASS_ARMOR, HEALER_CLASSES, LOOT_DATA_VERSION, SEASON_2_DUNGEONS, endO
 import { enrichCuratedDungeonsWithOfficial } from './official-loot.js';
 import { buildStatAlignment, replacementStatFit } from './stat-alignment.js';
 
+import { MIDNIGHT_SEASON_2, currentSeasonState, isMidnightSeason2ScoreEntry, normaliseContentName, seasonDungeonFor } from './season-12-1.js';
 const SLOT_LABELS = {
   head: 'Head',
   neck: 'Neck',
@@ -27,24 +28,56 @@ export function getCurrentScore(character) {
   const seasons = Array.isArray(character?.mythic_plus_scores_by_season)
     ? character.mythic_plus_scores_by_season
     : [];
-  const score = seasons[0]?.scores?.all;
+
+  // Prefer an explicitly identified Midnight Season 2 score.
+  // The literal "current" token remains accepted for the local demo fixture.
+  // A real outgoing season identifier such as season-midnight-1 is rejected.
+  const selected = seasons.find(isMidnightSeason2ScoreEntry)
+    || seasons.find((entry) => normaliseContentName(entry?.season) === 'current');
+
+  const score = selected?.scores?.all;
   return Number.isFinite(score) ? score : 0;
 }
 
 export function normaliseRuns(character) {
-  const runs = Array.isArray(character?.mythic_plus_best_runs) ? character.mythic_plus_best_runs : [];
-  return runs
-    .map((run) => ({
-      dungeon: run.dungeon || run.short_name || 'Unknown dungeon',
-      shortName: run.short_name || run.dungeon || 'Unknown',
-      level: Number(run.mythic_level) || 0,
-      score: Number(run.score) || 0,
-      upgrades: Number(run.num_keystone_upgrades) || 0,
-      clearTimeMs: Number(run.clear_time_ms) || 0,
-      parTimeMs: Number(run.par_time_ms) || 0,
-      url: run.url || null,
-    }))
-    .sort((a, b) => b.score - a.score);
+  const sourceRuns = Array.isArray(character?.mythic_plus_best_runs)
+    ? character.mythic_plus_best_runs
+    : [];
+
+  // Raider.IO best-runs data is current-season data, but around a season
+  // transition the outgoing season can remain "current" until the new M+
+  // season actually opens. Filtering against the canonical 12.1 pool stops
+  // Season 1 runs from contaminating the Season 2 progression map.
+  const bestByDungeon = new Map();
+
+  for (const run of sourceRuns) {
+    const seasonDungeon = seasonDungeonFor(run?.dungeon, run?.short_name);
+    if (!seasonDungeon) continue;
+
+    const item = {
+      dungeon: seasonDungeon.name,
+      shortName: seasonDungeon.shortName,
+      level: Number(run?.mythic_level) || 0,
+      score: Number(run?.score) || 0,
+      upgrades: Number(run?.num_keystone_upgrades) || 0,
+      clearTimeMs: Number(run?.clear_time_ms) || 0,
+      parTimeMs: Number(run?.par_time_ms) || 0,
+      url: run?.url || null,
+      hasRun: true,
+    };
+
+    const existing = bestByDungeon.get(seasonDungeon.shortName);
+    if (
+      !existing
+      || item.score > existing.score
+      || (item.score === existing.score && item.level > existing.level)
+    ) {
+      bestByDungeon.set(seasonDungeon.shortName, item);
+    }
+  }
+
+  return [...bestByDungeon.values()]
+    .sort((a, b) => b.score - a.score || b.level - a.level || a.dungeon.localeCompare(b.dungeon));
 }
 
 export function normaliseGear(character) {
@@ -103,12 +136,34 @@ export function gearWeaknesses(character, limit = 8) {
 
 export function dungeonOpportunities(character) {
   const runs = normaliseRuns(character);
-  if (!runs.length) return [];
+  const runByDungeon = new Map(runs.map((run) => [run.shortName, run]));
+  const bestScore = runs.length ? Math.max(...runs.map((run) => run.score)) : 0;
+  const bestLevel = runs.length ? Math.max(...runs.map((run) => run.level)) : 0;
 
-  const bestScore = Math.max(...runs.map((run) => run.score));
-  const bestLevel = Math.max(...runs.map((run) => run.level));
+  const candidates = MIDNIGHT_SEASON_2.dungeons.map((dungeon) => {
+    const run = runByDungeon.get(dungeon.shortName);
 
-  const candidates = runs.map((run) => {
+    if (!run) {
+      // An unrun current-season dungeon is a genuine score opportunity.
+      // Give it a deterministic high raw value rather than importing an old
+      // Season 1 score or pretending +0 is a completed run.
+      return {
+        dungeon: dungeon.name,
+        shortName: dungeon.shortName,
+        level: 0,
+        score: 0,
+        upgrades: 0,
+        clearTimeMs: 0,
+        parTimeMs: 0,
+        url: null,
+        hasRun: false,
+        scoreDeficit: bestScore,
+        levelDeficit: bestLevel,
+        timingPenalty: 0,
+        rawOpportunity: 100 + Math.min(60, bestScore * 0.15) + Math.min(30, bestLevel * 3),
+      };
+    }
+
     const scoreDeficit = Math.max(0, bestScore - run.score);
     const levelDeficit = Math.max(0, bestLevel - run.level);
     const overTimeRatio = run.parTimeMs > 0
@@ -131,27 +186,65 @@ export function dungeonOpportunities(character) {
   return candidates
     .map((run) => ({
       ...run,
-      opportunity: maxOpportunity > 0 ? (run.rawOpportunity / maxOpportunity) * 100 : 0,
+      opportunity: maxOpportunity > 0
+        ? (run.rawOpportunity / maxOpportunity) * 100
+        : (run.hasRun ? 0 : 100),
     }))
-    .sort((a, b) => b.opportunity - a.opportunity);
+    .sort((a, b) =>
+      b.opportunity - a.opportunity
+      || Number(a.hasRun) - Number(b.hasRun)
+      || b.scoreDeficit - a.scoreDeficit
+      || a.dungeon.localeCompare(b.dungeon)
+    );
 }
 
-export function raidSnapshot(character, limit = 4) {
-  const raids = character?.raid_progression;
-  if (!raids || typeof raids !== 'object') return [];
+export function raidSnapshot(character) {
+  const season = currentSeasonState();
+  const raids = character?.raid_progression && typeof character.raid_progression === 'object'
+    ? character.raid_progression
+    : {};
 
-  return Object.entries(raids)
-    .map(([slug, value]) => ({
-      slug,
-      name: slug.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '),
-      summary: value?.summary || 'No progress',
-      totalBosses: Number(value?.total_bosses) || 0,
-      mythic: Number(value?.mythic_bosses_killed) || 0,
-      heroic: Number(value?.heroic_bosses_killed) || 0,
-      normal: Number(value?.normal_bosses_killed) || 0,
-    }))
-    .sort((a, b) => b.mythic - a.mythic || b.heroic - a.heroic || b.normal - a.normal)
-    .slice(0, limit);
+  const currentRaidEntry = Object.entries(raids).find(([slug]) => {
+    const token = normaliseContentName(slug);
+    return token === normaliseContentName(MIDNIGHT_SEASON_2.raid.slug)
+      || MIDNIGHT_SEASON_2.raid.aliases.includes(token);
+  });
+
+  const value = currentRaidEntry?.[1] || null;
+  const normal = Number(value?.normal_bosses_killed) || 0;
+  const heroic = Number(value?.heroic_bosses_killed) || 0;
+  const mythic = Number(value?.mythic_bosses_killed) || 0;
+  const totalBosses = MIDNIGHT_SEASON_2.raid.totalBosses;
+
+  const raidSummary = value?.summary
+    || (season.raidOpen
+      ? `${normal}/${totalBosses} N | ${heroic}/${totalBosses} H | ${mythic}/${totalBosses} M`
+      : `Opens ${MIDNIGHT_SEASON_2.raidOpens} | ${totalBosses} bosses`);
+
+  return [
+    {
+      slug: MIDNIGHT_SEASON_2.raid.slug,
+      name: MIDNIGHT_SEASON_2.raid.name,
+      summary: raidSummary,
+      totalBosses,
+      mythic,
+      heroic,
+      normal,
+      seasonCurrent: true,
+      isLair: false,
+    },
+    {
+      slug: MIDNIGHT_SEASON_2.lair.slug,
+      name: MIDNIGHT_SEASON_2.lair.name,
+      summary: `${MIDNIGHT_SEASON_2.lair.boss} | 1-boss Season 2 Lair`,
+      totalBosses: 1,
+      mythic: 0,
+      heroic: 0,
+      normal: 0,
+      seasonCurrent: true,
+      isLair: true,
+    },
+  ];
 }
 
 function canonicalClass(character) {
@@ -376,6 +469,17 @@ function priorityLabel(value) {
 }
 
 function dungeonRecommendation(run) {
+  if (!run.hasRun) {
+    return {
+      key: `dungeon:${run.shortName}`,
+      type: 'dungeon',
+      title: `Establish Season 2 score in ${run.shortName}`,
+      detail: `No Midnight Season 2 best run is recorded for ${run.dungeon}. Completing it gives the progression map a valid current-season baseline.`,
+      value: run.opportunity,
+      label: priorityLabel(run.opportunity),
+    };
+  }
+
   const suggestedLevel = Math.max(
     run.level + 1,
     Math.min(run.level + Math.max(1, run.levelDeficit), run.level + 2)
@@ -385,7 +489,7 @@ function dungeonRecommendation(run) {
     key: `dungeon:${run.shortName}`,
     type: 'dungeon',
     title: `Push ${run.shortName} toward +${suggestedLevel}`,
-    detail: `Your best recorded run is +${run.level} for ${run.score.toFixed(1)} score. It trails your strongest dungeon by ${run.scoreDeficit.toFixed(1)} score.`,
+    detail: `Your best Season 2 run is +${run.level} for ${run.score.toFixed(1)} score. It trails your strongest current-season dungeon by ${run.scoreDeficit.toFixed(1)} score.`,
     value: run.opportunity,
     label: priorityLabel(run.opportunity),
   };
@@ -510,6 +614,7 @@ export function buildAnalysis(character, options = {}) {
   const statContext = options.statContext === 'raid' ? 'raid' : 'mythic_plus';
   const statAlignment = buildStatAlignment(character, { context: statContext });
   const lootDungeons = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel, statContext });
+  const season = currentSeasonState();
 
   return {
     currentScore,
@@ -519,6 +624,7 @@ export function buildAnalysis(character, options = {}) {
     focus,
     statContext,
     statAlignment,
+    season,
     runs: normaliseRuns(character),
     dungeons: dungeonOpportunities(character),
     weakGear: gearWeaknesses(character),
