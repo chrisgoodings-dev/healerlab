@@ -73,7 +73,7 @@ function renderGear(gear) {
   }
   container.innerHTML = gear.map((item) => `
     <div class="gear-row">
-      <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.name)} · ${item.belowAverage.toFixed(0)} ilvl below slot average</span></div>
+      <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.name)} Â· ${item.belowAverage.toFixed(0)} ilvl below ${item.baseline.toFixed(1)} equipped average</span></div>
       <span class="gear-ilvl">${item.itemLevel}</span>
     </div>
   `).join('');
@@ -98,8 +98,8 @@ function renderCharacter(character, options) {
 
   $('#character-name').textContent = character.name || 'Unknown character';
   $('#character-role').textContent = character.active_spec_role || 'HEALER';
-  $('#character-meta').textContent = [character.realm, character.class, character.active_spec_name].filter(Boolean).join(' · ');
-  $('#item-level').textContent = itemLevel ? itemLevel.toFixed(1) : '—';
+  $('#character-meta').textContent = [character.realm, character.class, character.active_spec_name].filter(Boolean).join(' Â· ');
+  $('#item-level').textContent = itemLevel ? itemLevel.toFixed(1) : 'â€”';
   $('#mythic-score').textContent = score ? Math.round(score).toLocaleString() : '0';
   $('#score-gap').textContent = analysis.scoreGap ? Math.round(analysis.scoreGap).toLocaleString() : 'Goal met';
   $('#target-label').textContent = target.toLocaleString();
@@ -109,7 +109,7 @@ function renderCharacter(character, options) {
 
   if (analysis.scoreGap > 0) {
     $('#score-summary').textContent = `You are ${Math.round(analysis.scoreGap).toLocaleString()} rating from the target. The planner favours weaker dungeons where progression is less developed.`;
-    $('#score-detail').textContent = `${Math.round(score).toLocaleString()} current rating · ${target.toLocaleString()} target`;
+    $('#score-detail').textContent = `${Math.round(score).toLocaleString()} current rating Â· ${target.toLocaleString()} target`;
   } else {
     $('#score-summary').textContent = 'You have met or exceeded this target. Raise the goal to keep the progression analysis useful.';
     $('#score-detail').textContent = `${Math.round(score).toLocaleString()} current rating`;
@@ -129,8 +129,14 @@ function renderCharacter(character, options) {
   renderRecommendations(analysis.recommendations);
 
   const runCount = analysis.runs.length;
-  const gearCount = analysis.weakGear.filter((g) => g.belowAverage >= 1).length;
-  $('#method-summary').textContent = `This analysis compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} below-average equipment slots. Dungeon priorities are based on the gap between each run and your strongest recorded performance; gear priorities compare slots against your own equipped-item average. The result is a heuristic progression plan, not a healing-throughput simulation.`;
+  const gearCount = analysis.weakGear.length;
+  const focusLabel = {
+    balanced: 'Balanced progression',
+    score: 'Mythic+ score',
+    gear: 'Gear efficiency',
+  }[analysis.focus] || 'Balanced progression';
+
+  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. Dungeon and gear opportunities are each normalised to a 0â€“100 relative priority within their own category. The selected focus changes how many recommendations come from each category; cosmetic slots are excluded. This is a heuristic progression plan, not a healing-throughput simulation.`;
 }
 
 function escapeHtml(value) {
@@ -159,7 +165,7 @@ async function analyseLiveCharacter(event) {
 
   activeController?.abort();
   activeController = new AbortController();
-  setState('loading', 'Contacting Raider.IO through the HealerLab API…');
+  setState('loading', 'Contacting Raider.IO through the HealerLab APIâ€¦');
 
   try {
     const character = await fetchCharacter({
@@ -173,7 +179,7 @@ async function analyseLiveCharacter(event) {
     dashboard.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    setState('error', `${error.message} You can use “Load example” to preview the analysis engine.`);
+    setState('error', `${error.message} You can use â€œLoad exampleâ€ to preview the analysis engine.`);
   }
 }
 
