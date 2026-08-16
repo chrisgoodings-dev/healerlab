@@ -94,6 +94,62 @@ function renderGear(gear) {
   }).join('');
 }
 
+function renderStatAlignment(alignment) {
+  const score = $('#stat-alignment-score');
+  const summary = $('#stat-alignment-summary');
+  const rows = $('#stat-alignment-rows');
+  const note = $('#stat-alignment-note');
+
+  if (!alignment?.available) {
+    score.className = 'stat-alignment-score neutral';
+    score.textContent = '-';
+    summary.className = 'stat-alignment-summary empty-state';
+    summary.textContent = alignment?.reason || 'No secondary-stat reference is available.';
+    rows.innerHTML = '';
+    note.textContent = '';
+    return;
+  }
+
+  score.className = `stat-alignment-score ${alignment.status}`;
+  score.textContent = `${Math.round(alignment.score)}/100`;
+  summary.className = 'stat-alignment-summary';
+  summary.textContent = `${alignment.profile.context} observed target | ${alignment.profile.sample}`;
+
+  rows.innerHTML = alignment.rows.map((row) => {
+    const deltaPoints = row.delta * 100;
+    const direction = row.direction === 'aligned'
+      ? 'ALIGNED'
+      : row.direction === 'low'
+        ? 'LOW'
+        : 'HIGH';
+    const sign = deltaPoints > 0 ? '+' : '';
+
+    return `
+      <div class="stat-alignment-row">
+        <div class="stat-name"><strong>${escapeHtml(row.label)}</strong><span>${Math.round(row.rating).toLocaleString()} rating</span></div>
+        <div class="stat-share"><span>Current</span><strong>${(row.currentShare * 100).toFixed(1)}%</strong></div>
+        <div class="stat-share"><span>Target</span><strong>${(row.targetShare * 100).toFixed(1)}%</strong></div>
+        <div class="stat-gap ${row.status}"><strong>${sign}${deltaPoints.toFixed(1)}pp</strong><span>${direction}</span></div>
+      </div>
+    `;
+  }).join('');
+
+  note.textContent = `Reference snapshot ${alignment.profile.snapshot}. This is an observed distribution, not a simulation-derived perfect stat weight. Green is within 4 percentage points of target, amber within 8, and red is more than 8 points away.`;
+}
+
+function itemStatNames(stats) {
+  if (!stats) return [];
+  const labels = {
+    crit: 'Crit',
+    haste: 'Haste',
+    mastery: 'Mastery',
+    versatility: 'Versatility',
+  };
+  return Object.entries(labels)
+    .filter(([key]) => Number(stats[key]) > 0)
+    .map(([, label]) => label);
+}
+
 function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) {
   const bestContainer = $('#best-loot-farm');
   const ranking = $('#loot-ranking');
@@ -136,6 +192,12 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
       ? `<img class="loot-gear-icon" src="${escapeHtml(match.currentIconUrl)}" alt="" loading="lazy" />`
       : '<span class="loot-gear-icon loot-gear-icon-fallback" aria-hidden="true">+</span>';
     const official = match.itemId ? ` | Blizzard item ${match.itemId}` : '';
+    const stats = itemStatNames(match.itemSecondaryStats);
+    const fitScore = Number(match.statFitScore) || 0;
+    const fitSign = fitScore > 0 ? '+' : '';
+    const fit = match.statFitLabel && match.statFitLabel !== 'No stat signal'
+      ? `<small class="loot-stat-fit ${escapeHtml(match.statFitStatus || 'neutral')}">${stats.length ? `${escapeHtml(stats.join(' / '))} | ` : ''}${escapeHtml(match.statFitLabel)} (${fitSign}${Math.round(fitScore)})</small>`
+      : '';
 
     return `
       <li>
@@ -143,6 +205,7 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
         <div>
           <strong>${escapeHtml(match.itemName)}</strong>
           <span>${escapeHtml(match.targetLabel)} | ${match.currentItemLevel} -> ${match.dropItemLevel} (+${match.upgradeDelta} ilvl)${official}</span>
+          ${fit}
         </div>
       </li>
     `;
@@ -176,7 +239,8 @@ function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) 
   `).join('');
 
   const officialCount = dungeons.filter((dungeon) => dungeon.officialSource).length;
-  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeon identities were enriched from the Blizzard Journal API. The planner keeps curated healer eligibility/slot rules, but uses Blizzard Journal instance IDs, item IDs, names and instance media when available. Score uses +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot coverage and item-level gain.`;
+  const statAdjusted = dungeons.some((dungeon) => dungeon.statAlignmentAvailable);
+  $('#loot-disclaimer').textContent = `Season 2 loot snapshot ${version}. ${officialCount}/${dungeons.length} dungeon identities were enriched from the Blizzard Journal API. Score uses +${keyLevel} end-of-dungeon item level (${dropItemLevel}), weak-slot coverage and slot weakness${statAdjusted ? ', with Blizzard item secondary-stat composition applying a capped +/-25% stat-fit modifier' : ''}. Curated healer eligibility remains a safety layer.`;
 }
 
 function renderRecommendations(recommendations) {
@@ -236,6 +300,7 @@ function renderCharacter(character, options) {
   renderRaid(analysis.raids);
   renderDungeons(analysis.dungeons);
   renderGear(analysis.weakGear);
+  renderStatAlignment(analysis.statAlignment);
   renderLootPlanner(analysis.lootDungeons, {
     version: analysis.lootDataVersion,
     keyLevel: analysis.farmKeyLevel,
@@ -252,7 +317,10 @@ function renderCharacter(character, options) {
   }[analysis.focus] || 'Balanced progression';
 
   const farmName = analysis.bestGearFarm?.gearOpportunity > 0 ? analysis.bestGearFarm.name : 'no current farm';
-  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. The gear farm planner matched those weak slots against the Midnight Season 2 healer loot pool, enriched with Blizzard Journal instance and item identity data when available at +${analysis.farmKeyLevel} (item level ${analysis.farmDropItemLevel}); its current top result is ${farmName}. Opportunity scores are normalised within their category. Equipment data source: ${character?.healerlab_sources?.blizzard === 'ok' ? 'official Blizzard Character Equipment API' : 'Raider.IO fallback'}. Cosmetic slots are excluded. This is an item-level progression heuristic, not a Best-in-Slot or healing-throughput simulation.`;
+  const statMethod = analysis.statAlignment?.available
+    ? ` Secondary-stat alignment is ${Math.round(analysis.statAlignment.score)}/100 against the ${analysis.statAlignment.profile.context} observed reference profile. Blizzard item stat composition can modify otherwise comparable gear opportunities by at most +/-25%.`
+    : ' Secondary-stat alignment was unavailable and did not affect gear priority.';
+  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. The gear farm planner matched those weak slots against the Midnight Season 2 healer loot pool, enriched with Blizzard Journal instance and item identity data when available at +${analysis.farmKeyLevel} (item level ${analysis.farmDropItemLevel}); its current top result is ${farmName}.${statMethod} Equipment data source: ${character?.healerlab_sources?.blizzard === 'ok' ? 'official Blizzard Character Equipment API' : 'Raider.IO fallback'}. Cosmetic slots are excluded. This remains an explainable progression heuristic, not a Best-in-Slot or healing-throughput simulation.`;
 }
 
 function escapeHtml(value) {
@@ -267,6 +335,7 @@ function escapeHtml(value) {
 function currentOptions() {
   return {
     focus: $('#focus').value,
+    statContext: $('#stat-context').value === 'raid' ? 'raid' : 'mythic_plus',
     targetScore: Number($('#target-score').value) || 0,
     farmKeyLevel: Number($('#farm-key-level').value) || 10,
   };

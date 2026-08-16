@@ -28,6 +28,7 @@ const PERFORMANCE_SLOT_TYPES = Object.freeze({
 
 let tokenCache = { clientId: '', token: '', expiresAt: 0 };
 const mediaCache = new Map();
+const itemStatsCache = new Map();
 
 export function blizzardConfigured(env = {}) {
   return Boolean(env.BLIZZARD_CLIENT_ID && env.BLIZZARD_CLIENT_SECRET);
@@ -50,6 +51,77 @@ function numericValue(...values) {
     if (Number.isFinite(number) && number > 0) return number;
   }
   return 0;
+}
+
+function nonNegativeValue(...values) {
+  for (const candidate of values) {
+    const raw = candidate && typeof candidate === 'object' && 'value' in candidate
+      ? candidate.value
+      : candidate;
+    const number = Number(raw);
+    if (Number.isFinite(number) && number >= 0) return number;
+  }
+  return 0;
+}
+
+const ITEM_SECONDARY_STAT_TYPES = Object.freeze({
+  CRIT_RATING: 'crit',
+  CRITICAL_STRIKE: 'crit',
+  CRITICAL_STRIKE_RATING: 'crit',
+  HASTE: 'haste',
+  HASTE_RATING: 'haste',
+  MASTERY: 'mastery',
+  MASTERY_RATING: 'mastery',
+  VERSATILITY: 'versatility',
+  VERSATILITY_RATING: 'versatility',
+});
+
+function statTypeKey(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function normaliseCharacterStatistics(raw = {}) {
+  return {
+    crit: nonNegativeValue(
+      raw?.spell_crit?.rating,
+      raw?.melee_crit?.rating,
+      raw?.ranged_crit?.rating,
+      raw?.critical_strike?.rating,
+      raw?.crit_rating
+    ),
+    haste: nonNegativeValue(
+      raw?.spell_haste?.rating,
+      raw?.melee_haste?.rating,
+      raw?.ranged_haste?.rating,
+      raw?.haste?.rating,
+      raw?.haste_rating
+    ),
+    mastery: nonNegativeValue(raw?.mastery?.rating, raw?.mastery_rating),
+    versatility: nonNegativeValue(
+      raw?.versatility?.rating,
+      raw?.versatility,
+      raw?.versatility_rating
+    ),
+  };
+}
+
+export function normaliseItemSecondaryStats(item = {}) {
+  const result = { crit: 0, haste: 0, mastery: 0, versatility: 0 };
+  const previewStats = Array.isArray(item?.preview_item?.stats) ? item.preview_item.stats : null;
+  const stats = previewStats || (Array.isArray(item?.stats) ? item.stats : []);
+
+  for (const entry of stats) {
+    const type = statTypeKey(entry?.type?.type || entry?.type?.name || entry?.type);
+    const key = ITEM_SECONDARY_STAT_TYPES[type];
+    if (!key) continue;
+    result[key] += nonNegativeValue(entry?.value?.value, entry?.value);
+  }
+
+  return result;
 }
 
 function slotFromType(type, counters) {
@@ -276,6 +348,32 @@ async function fetchItemIcon(itemId, region, env) {
   }
 }
 
+export async function fetchCharacterStatistics({ region, realm, name, env }) {
+  const config = REGION_CONFIG[region];
+  if (!config) throw new Error('Unsupported Blizzard API region.');
+
+  const realmSlug = slugifyRealm(realm);
+  const characterName = String(name || '').trim().toLowerCase();
+  if (!realmSlug || !characterName) throw new Error('Realm and character are required.');
+
+  const raw = await blizzardGet(
+    `/profile/wow/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(characterName)}/statistics`,
+    {
+      region,
+      namespace: config.profileNamespace,
+      locale: config.locale,
+      env,
+    }
+  );
+
+  return {
+    available: true,
+    state: 'ok',
+    realmSlug,
+    ratings: normaliseCharacterStatistics(raw),
+  };
+}
+
 export async function fetchCharacterEquipment({ region, realm, name, env }) {
   const config = REGION_CONFIG[region];
   if (!config) throw new Error('Unsupported Blizzard API region.');
@@ -312,25 +410,76 @@ export async function fetchCharacterEquipment({ region, realm, name, env }) {
 
 export async function enrichCharacterWithBlizzard(character, { region, realm, name, env }) {
   if (!blizzardConfigured(env)) {
-    return mergeBlizzardEquipment(character, {
+    const merged = mergeBlizzardEquipment(character, {
       available: false,
       state: 'not_configured',
       message: 'Blizzard API credentials are not configured.',
     });
+    return {
+      ...merged,
+      healerlab_sources: {
+        ...(merged.healerlab_sources || {}),
+        blizzard_statistics: 'not_configured',
+      },
+    };
   }
 
-  try {
-    const equipment = await fetchCharacterEquipment({ region, realm, name, env });
-    return mergeBlizzardEquipment(character, equipment);
-  } catch (error) {
-    return mergeBlizzardEquipment(character, {
-      available: false,
-      state: 'unavailable',
-      message: error?.code === 'BLIZZARD_AUTH_FAILED'
-        ? 'Blizzard authentication failed.'
-        : 'Blizzard equipment data was unavailable; Raider.IO data was used instead.',
-    });
-  }
+  const [equipmentResult, statisticsResult] = await Promise.allSettled([
+    fetchCharacterEquipment({ region, realm, name, env }),
+    fetchCharacterStatistics({ region, realm, name, env }),
+  ]);
+
+  const merged = equipmentResult.status === 'fulfilled'
+    ? mergeBlizzardEquipment(character, equipmentResult.value)
+    : mergeBlizzardEquipment(character, {
+        available: false,
+        state: 'unavailable',
+        message: equipmentResult.reason?.code === 'BLIZZARD_AUTH_FAILED'
+          ? 'Blizzard authentication failed.'
+          : 'Blizzard equipment data was unavailable; Raider.IO data was used instead.',
+      });
+
+  const statistics = statisticsResult.status === 'fulfilled' ? statisticsResult.value : null;
+
+  return {
+    ...merged,
+    secondary_stats: statistics?.ratings || merged.secondary_stats || null,
+    healerlab_sources: {
+      ...(merged.healerlab_sources || {}),
+      blizzard_statistics: statistics ? 'ok' : 'unavailable',
+    },
+    blizzard: {
+      ...(merged.blizzard || {}),
+      statisticsAvailable: Boolean(statistics),
+    },
+  };
+}
+
+export async function fetchBlizzardItemStats({ region, itemId, env }) {
+  const config = REGION_CONFIG[region];
+  if (!config) throw new Error('Unsupported Blizzard API region.');
+
+  const id = Number(itemId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid Blizzard item ID.');
+
+  const cacheKey = `${region}:${id}`;
+  if (itemStatsCache.has(cacheKey)) return itemStatsCache.get(cacheKey);
+
+  const item = await blizzardGet(`/data/wow/item/${id}`, {
+    region,
+    namespace: config.staticNamespace,
+    locale: config.locale,
+    env,
+  });
+
+  const result = {
+    id,
+    secondaryStats: normaliseItemSecondaryStats(item),
+  };
+
+  if (itemStatsCache.size > 500) itemStatsCache.clear();
+  itemStatsCache.set(cacheKey, result);
+  return result;
 }
 
 export async function fetchBlizzardItem({ region, itemId, env }) {
@@ -363,6 +512,7 @@ export async function fetchBlizzardItem({ region, itemId, env }) {
     itemSubclass: item?.item_subclass?.name || null,
     inventoryType: item?.inventory_type?.type || item?.inventory_type?.name || null,
     requiredLevel: numericValue(item?.required_level) || null,
+    secondaryStats: normaliseItemSecondaryStats(item),
     iconUrl: iconFromMedia(media),
   };
 }

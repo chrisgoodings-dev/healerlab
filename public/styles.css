@@ -94,7 +94,7 @@ a { color: inherit; }
 .text-button { border: 0; background: transparent; color: var(--accent); cursor: pointer; padding: 8px 0; font-size: .84rem; }
 .text-button:hover { text-decoration: underline; }
 
-.form-grid { display: grid; grid-template-columns: .65fr 1fr 1fr 1.05fr .8fr .72fr 1fr; gap: 12px; align-items: end; }
+.form-grid { display: grid; grid-template-columns: .58fr .88fr .88fr 1fr .72fr .72fr .68fr .94fr; gap: 12px; align-items: end; }
 label { display: grid; gap: 8px; color: #b8c7c1; font-size: .78rem; font-weight: 650; }
 input, select { width: 100%; min-height: 48px; border: 1px solid var(--line); border-radius: 12px; padding: 0 13px; color: var(--text); background: rgba(5,15,12,.66); outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
 input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0 0 3px rgba(132,240,193,.08); }
@@ -315,4 +315,56 @@ input:focus, select:focus { border-color: rgba(132,240,193,.55); box-shadow: 0 0
 .loot-dungeon-row { grid-template-columns: 34px 34px 1fr auto; }
 @media (max-width: 520px) {
   .loot-instance-icon { width: 54px; height: 54px; }
+}
+
+
+/* Secondary-stat alignment */
+.stat-alignment-card { overflow: hidden; }
+.stat-alignment-score {
+  min-width: 76px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  text-align: center;
+  font-size: .86rem;
+  font-weight: 900;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.025);
+}
+.stat-alignment-score.good { color: var(--accent); border-color: var(--line-strong); background: var(--accent-soft); }
+.stat-alignment-score.warning { color: var(--warning); border-color: rgba(239,193,108,.28); background: rgba(239,193,108,.08); }
+.stat-alignment-score.poor { color: var(--danger); border-color: rgba(239,141,145,.28); background: rgba(239,141,145,.08); }
+.stat-alignment-score.neutral { color: var(--muted); }
+.stat-alignment-summary { margin: 16px 0 0; color: #c6d7d0; font-size: .8rem; line-height: 1.5; }
+.stat-alignment-rows { margin-top: 14px; display: grid; gap: 8px; }
+.stat-alignment-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.35fr) minmax(90px, .62fr) minmax(90px, .62fr) minmax(105px, .68fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255,255,255,.018);
+}
+.stat-name { display: grid; gap: 3px; }
+.stat-name strong { font-size: .86rem; }
+.stat-name span, .stat-share span, .stat-gap span { color: var(--muted); font-size: .64rem; }
+.stat-share { display: grid; gap: 3px; }
+.stat-share strong { font-size: .86rem; }
+.stat-gap { justify-self: end; min-width: 92px; text-align: right; display: grid; gap: 2px; }
+.stat-gap strong { font-size: .84rem; }
+.stat-gap.good strong { color: var(--accent); }
+.stat-gap.warning strong { color: var(--warning); }
+.stat-gap.poor strong { color: var(--danger); }
+.stat-alignment-note { margin: 13px 0 0; color: var(--muted); font-size: .69rem; line-height: 1.5; }
+.loot-stat-fit { display: block; margin-top: 4px; font-size: .66rem; }
+.loot-stat-fit.good { color: var(--accent); }
+.loot-stat-fit.warning { color: var(--warning); }
+.loot-stat-fit.poor { color: var(--danger); }
+.loot-stat-fit.neutral { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .stat-alignment-row { grid-template-columns: 1fr 1fr 1fr; }
+  .stat-name { grid-column: 1 / -1; }
+  .stat-gap { justify-self: stretch; text-align: left; }
 }

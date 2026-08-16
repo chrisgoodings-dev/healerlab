@@ -10,12 +10,13 @@ test('normalises punctuation when matching Blizzard Journal names', () => {
 
 test('merges official Blizzard item IDs and instance media into curated loot', () => {
   const curated = [{ name: "Kings' Rest", shortName: 'KR', items: [{ name: 'Example Ring', slot: 'ring' }, { name: 'Curated Only', slot: 'trinket' }] }];
-  const official = [{ name: "Kings' Rest", journalInstanceId: 1041, iconUrl: 'https://example.test/kr.jpg', items: [{ id: 12345, name: 'Example Ring', encounterId: 1, encounterName: 'Boss' }] }];
+  const official = [{ name: "Kings' Rest", journalInstanceId: 1041, iconUrl: 'https://example.test/kr.jpg', items: [{ id: 12345, name: 'Example Ring', encounterId: 1, encounterName: 'Boss', secondaryStats: { haste: 100, mastery: 80 } }] }];
   const [dungeon] = enrichCuratedDungeonsWithOfficial(curated, official);
   assert.equal(dungeon.journalInstanceId, 1041);
   assert.equal(dungeon.instanceIconUrl, 'https://example.test/kr.jpg');
   assert.equal(dungeon.items[0].itemId, 12345);
   assert.equal(dungeon.items[0].officialSource, true);
+  assert.deepEqual(dungeon.items[0].secondaryStats, { haste: 100, mastery: 80 });
   assert.equal(dungeon.items[1].officialSource, false);
 });
 

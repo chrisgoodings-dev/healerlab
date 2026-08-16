@@ -1,5 +1,6 @@
 import { CLASS_ARMOR, HEALER_CLASSES, LOOT_DATA_VERSION, SEASON_2_DUNGEONS, endOfDungeonItemLevel } from './loot-data.js';
 import { enrichCuratedDungeonsWithOfficial } from './official-loot.js';
+import { buildStatAlignment, itemStatFit } from './stat-alignment.js';
 
 const SLOT_LABELS = {
   head: 'Head',
@@ -201,8 +202,9 @@ function bestTargetForLootItem(item, weakGear) {
   return candidates[0] || null;
 }
 
-export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
+export function dungeonLootOpportunities(character, { keyLevel = 10, statContext = 'mythic_plus' } = {}) {
   const weakGear = gearWeaknesses(character, 16);
+  const statAlignment = buildStatAlignment(character, { context: statContext });
   const usableLoot = usableLootForCharacter(character);
   const farmKeyLevel = Math.max(2, Math.floor(Number(keyLevel) || 10));
   const dropItemLevel = endOfDungeonItemLevel(farmKeyLevel);
@@ -216,11 +218,23 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
         const upgradeDelta = dropItemLevel - target.itemLevel;
         if (upgradeDelta <= 0) return null;
 
+        const statFit = itemStatFit(item.secondaryStats, statAlignment);
+        const upgradeValue = (
+          upgradeDelta *
+          (0.5 + (target.priority / 200)) *
+          statFit.multiplier
+        );
+
         return {
           itemName: item.name,
           itemId: Number(item.itemId) || null,
           officialSource: item.officialSource === true,
           encounterName: item.encounterName || null,
+          itemSecondaryStats: item.secondaryStats || null,
+          statFitScore: statFit.score,
+          statFitMultiplier: statFit.multiplier,
+          statFitLabel: statFit.label,
+          statFitStatus: statFit.status,
           lootSlot: item.slot,
           targetSlot: target.slot,
           targetLabel: target.label,
@@ -233,6 +247,7 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
           slotPriority: target.priority,
           dropItemLevel,
           upgradeDelta,
+          upgradeValue,
         };
       })
       .filter(Boolean);
@@ -244,8 +259,13 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
       const existing = bestBySlot.get(match.targetSlot);
       if (
         !existing ||
-        match.upgradeDelta > existing.upgradeDelta ||
-        (match.upgradeDelta === existing.upgradeDelta && match.slotPriority > existing.slotPriority)
+        match.upgradeValue > existing.upgradeValue ||
+        (match.upgradeValue === existing.upgradeValue && match.upgradeDelta > existing.upgradeDelta) ||
+        (
+          match.upgradeValue === existing.upgradeValue &&
+          match.upgradeDelta === existing.upgradeDelta &&
+          match.slotPriority > existing.slotPriority
+        )
       ) {
         bestBySlot.set(match.targetSlot, match);
       }
@@ -253,15 +273,18 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
 
     const slotMatches = [...bestBySlot.values()]
       .sort((a, b) =>
+        b.upgradeValue - a.upgradeValue ||
         b.upgradeDelta - a.upgradeDelta ||
         b.slotPriority - a.slotPriority ||
         a.targetLabel.localeCompare(b.targetLabel)
       );
 
-    // Weight the real item-level gain by how weak the slot is relative to the
-    // character's equipped average. The final score is then normalised to 0-100.
+    // Base value comes from real item-level gain and current slot weakness.
+    // Secondary-stat composition then applies a deliberately capped +/-25%
+    // modifier so stat fit can reorder similar upgrades without overwhelming
+    // a materially larger item-level gain.
     const upgradeCoverage = slotMatches.reduce(
-      (sum, match) => sum + (match.upgradeDelta * (0.5 + (match.slotPriority / 200))),
+      (sum, match) => sum + match.upgradeValue,
       0
     );
     const breadthBonus = Math.min(12, Math.max(0, slotMatches.length - 1) * 2);
@@ -280,8 +303,10 @@ export function dungeonLootOpportunities(character, { keyLevel = 10 } = {}) {
       matchingDrops: itemMatches.length,
       farmKeyLevel,
       dropItemLevel,
+      statAlignmentAvailable: statAlignment.available === true,
       matches: itemMatches
         .sort((a, b) =>
+          b.upgradeValue - a.upgradeValue ||
           b.upgradeDelta - a.upgradeDelta ||
           b.slotPriority - a.slotPriority ||
           a.itemName.localeCompare(b.itemName)
@@ -345,12 +370,17 @@ function gearRecommendation(item) {
 
 function farmRecommendation(dungeon) {
   const slots = dungeon.slotMatches.slice(0, 4).map((match) => match.targetLabel).join(', ');
+  const bestStatFit = dungeon.matches.find((match) => match.statFitScore >= 10);
+  const statDetail = bestStatFit
+    ? ` Best stat match: ${bestStatFit.itemName} (${bestStatFit.statFitLabel.toLowerCase()}).`
+    : '';
+
   return {
     key: `farm:${dungeon.shortName}`,
     type: 'farm',
     title: `Farm ${dungeon.name} at +${dungeon.farmKeyLevel}`,
     detail: dungeon.matchedSlots
-      ? `Item level ${dungeon.dropItemLevel} loot can upgrade ${dungeon.matchedSlots} weak slot${dungeon.matchedSlots === 1 ? '' : 's'}${slots ? `: ${slots}` : ''}.`
+      ? `Item level ${dungeon.dropItemLevel} loot can upgrade ${dungeon.matchedSlots} weak slot${dungeon.matchedSlots === 1 ? '' : 's'}${slots ? `: ${slots}` : ''}.${statDetail}`
       : `No weak equipped slots are item-level upgrades from +${dungeon.farmKeyLevel} loot.`,
     value: dungeon.gearOpportunity,
     label: priorityLabel(dungeon.gearOpportunity),
@@ -382,11 +412,11 @@ const STRATEGIES = {
   gear: { dungeon: 0, gear: 3, farm: 2 },
 };
 
-export function buildRecommendations(character, { focus = 'balanced', targetScore = 3000, farmKeyLevel = 10 } = {}) {
+export function buildRecommendations(character, { focus = 'balanced', targetScore = 3000, farmKeyLevel = 10, statContext = 'mythic_plus' } = {}) {
   const currentScore = getCurrentScore(character);
   const dungeonCandidates = dungeonOpportunities(character).map(dungeonRecommendation);
   const gearCandidates = gearWeaknesses(character).map(gearRecommendation);
-  const farmCandidates = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel })
+  const farmCandidates = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel, statContext })
     .filter((dungeon) => dungeon.gearOpportunity > 0)
     .map(farmRecommendation);
   const strategy = STRATEGIES[focus] || STRATEGIES.balanced;
@@ -442,7 +472,9 @@ export function buildAnalysis(character, options = {}) {
   const progress = targetScore > 0 ? Math.min(1, currentScore / targetScore) : 0;
   const focus = STRATEGIES[options.focus] ? options.focus : 'balanced';
   const farmKeyLevel = Math.max(2, Math.floor(Number(options.farmKeyLevel) || 10));
-  const lootDungeons = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel });
+  const statContext = options.statContext === 'raid' ? 'raid' : 'mythic_plus';
+  const statAlignment = buildStatAlignment(character, { context: statContext });
+  const lootDungeons = dungeonLootOpportunities(character, { keyLevel: farmKeyLevel, statContext });
 
   return {
     currentScore,
@@ -450,6 +482,8 @@ export function buildAnalysis(character, options = {}) {
     scoreGap: Math.max(0, targetScore - currentScore),
     progress,
     focus,
+    statContext,
+    statAlignment,
     runs: normaliseRuns(character),
     dungeons: dungeonOpportunities(character),
     weakGear: gearWeaknesses(character),
@@ -459,6 +493,6 @@ export function buildAnalysis(character, options = {}) {
     farmDropItemLevel: endOfDungeonItemLevel(farmKeyLevel),
     lootDataVersion: LOOT_DATA_VERSION,
     raids: raidSnapshot(character),
-    recommendations: buildRecommendations(character, { ...options, focus }),
+    recommendations: buildRecommendations(character, { ...options, focus, statContext }),
   };
 }

@@ -1,4 +1,4 @@
-import { blizzardConfigured, blizzardGet } from './blizzard.js';
+import { blizzardConfigured, blizzardGet, fetchBlizzardItemStats } from './blizzard.js';
 
 const ALLOWED_REGIONS = new Set(['eu', 'us', 'kr', 'tw']);
 
@@ -180,7 +180,19 @@ async function fetchJournalDungeon({ region, definition, env }) {
       ),
     ]);
 
-    return normaliseJournalDungeon({ definition, instance, media, encounters });
+    const journal = normaliseJournalDungeon({ definition, instance, media, encounters });
+    const items = await Promise.all(
+      journal.items.map(async (item) => {
+        try {
+          const details = await fetchBlizzardItemStats({ region, itemId: item.id, env });
+          return { ...item, secondaryStats: details.secondaryStats };
+        } catch {
+          return { ...item, secondaryStats: null };
+        }
+      })
+    );
+
+    return { ...journal, items };
   })();
 
   dungeonCache.set(cacheKey, {

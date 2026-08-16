@@ -121,3 +121,13 @@ Keep a clear distinction between external data and your own processing in the re
 HealerLab now resolves the Midnight Season 2 dungeon identities through Blizzard's Journal API. Each dungeon is requested independently so a single Worker invocation only makes a small number of Blizzard subrequests. The Journal response supplies official journal instance IDs, encounter loot item IDs/names and instance media. These official identities are merged into the curated healer eligibility and slot model used by the gear planner.
 
 This is intentionally hybrid: Blizzard is authoritative for identity/media, while the curated model still supplies healer-specific armor/weapon/trinket eligibility where the Journal response alone is not sufficient to make a safe recommendation.
+
+## Secondary-stat alignment
+
+HealerLab can now request the Blizzard Character Statistics Summary alongside official equipment. Crit, Haste, Mastery and Versatility ratings are converted into shares of the character's total secondary-stat budget and compared with a versioned observed reference profile for the selected activity (Mythic+ or raid).
+
+The alignment score uses half the L1 distance between the current and reference distributions. A score of 100 therefore means the secondary-stat shares match the reference distribution; lower scores indicate greater divergence. Per-stat status uses transparent thresholds: green within 4 percentage points, amber from 4 to 8 points, and red beyond 8 points.
+
+Reference profiles are snapshots of observed high-level healer gear distributions rather than simulation-derived "perfect stat weights". They are versioned and should be refreshed as the season develops.
+
+Official Blizzard item stat composition is also used as a bounded gear-priority modifier. A drop containing stats the character is short on can increase its upgrade value, while a drop concentrated in already over-represented stats can reduce it. The adjustment is capped at +/-25%, so secondary-stat fit can reorder comparable upgrades without overriding a materially larger item-level improvement.

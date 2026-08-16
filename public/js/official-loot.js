@@ -47,6 +47,7 @@ export function enrichCuratedDungeonsWithOfficial(curatedDungeons, officialDunge
         itemId: Number(officialItem.id) || null,
         encounterId: Number(officialItem.encounterId) || null,
         encounterName: officialItem.encounterName || null,
+        secondaryStats: officialItem.secondaryStats || null,
         officialSource: true,
       };
     });

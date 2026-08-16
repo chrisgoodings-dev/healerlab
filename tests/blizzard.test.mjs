@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   mergeBlizzardEquipment,
   normaliseBlizzardEquipment,
+  normaliseCharacterStatistics,
+  normaliseItemSecondaryStats,
   slugifyRealm,
 } from '../functions/api/blizzard.js';
 
@@ -90,4 +92,40 @@ test('falls back cleanly when Blizzard equipment is unavailable', () => {
   assert.equal(merged.healerlab_sources.raider_io, 'ok');
   assert.equal(merged.healerlab_sources.blizzard, 'unavailable');
   assert.equal(merged.blizzard.available, false);
+});
+
+
+test('normalises Blizzard character secondary-stat ratings', () => {
+  const stats = normaliseCharacterStatistics({
+    spell_crit: { rating: 321, value: 12.3 },
+    spell_haste: { rating: 654, value: 18.4 },
+    mastery: { rating: 777, value: 31.2 },
+    versatility: 222,
+  });
+
+  assert.deepEqual(stats, {
+    crit: 321,
+    haste: 654,
+    mastery: 777,
+    versatility: 222,
+  });
+});
+
+test('normalises secondary stats from Blizzard preview item data', () => {
+  const stats = normaliseItemSecondaryStats({
+    preview_item: {
+      stats: [
+        { type: { type: 'HASTE_RATING' }, value: 410 },
+        { type: { type: 'MASTERY_RATING' }, value: 360 },
+        { type: { type: 'INTELLECT' }, value: 900 },
+      ],
+    },
+  });
+
+  assert.deepEqual(stats, {
+    crit: 0,
+    haste: 410,
+    mastery: 360,
+    versatility: 0,
+  });
 });

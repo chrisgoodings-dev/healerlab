@@ -28,6 +28,12 @@ export const demoCharacter = {
       main_hand: { item_level: 306, name: 'Staff of New Leaves' }
     }
   },
+  secondary_stats: {
+    crit: 480,
+    haste: 840,
+    mastery: 760,
+    versatility: 300,
+  },
   mythic_plus_scores_by_season: [{ season: 'current', scores: { all: 2846.2, healer: 2846.2 } }],
   mythic_plus_best_runs: [
     { dungeon: "Eco-Dome Al'dani", short_name: 'EDA', mythic_level: 13, score: 364.2, num_keystone_upgrades: 1, clear_time_ms: 1740000, par_time_ms: 1800000 },

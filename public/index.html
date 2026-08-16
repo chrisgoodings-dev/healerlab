@@ -92,6 +92,14 @@
           </label>
 
           <label>
+            <span>Stat target</span>
+            <select id="stat-context" name="statContext">
+              <option value="mythic_plus" selected>Mythic+</option>
+              <option value="raid">Raid</option>
+            </select>
+          </label>
+
+          <label>
             <span>Target M+ score</span>
             <input id="target-score" name="targetScore" type="number" value="3000" min="0" max="10000" step="50" />
           </label>
@@ -162,6 +170,21 @@
               </div>
               <div id="raid-progress" class="raid-progress empty-state">No raid data loaded.</div>
             </article>
+          </section>
+
+          <section class="card stat-alignment-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">STAT ALIGNMENT</p>
+                <h3>Secondary-stat balance</h3>
+              </div>
+              <span id="stat-alignment-score" class="stat-alignment-score neutral">-</span>
+            </div>
+            <div id="stat-alignment-summary" class="stat-alignment-summary empty-state">
+              Blizzard character statistics will be compared with an observed healer reference profile.
+            </div>
+            <div id="stat-alignment-rows" class="stat-alignment-rows"></div>
+            <p id="stat-alignment-note" class="stat-alignment-note"></p>
           </section>
 
           <section class="card recommendations-card">
