@@ -7,6 +7,7 @@ import { getHealerPlaybook } from './healer-priority.js';
 import { MIDNIGHT_SEASON_2 } from './season-12-1.js';
 import { usableWowheadGuide, wowheadSourceSummary } from './wowhead-bis.js';
 import { dungeonPriorityWeights, rankDungeonProgression } from './dungeon-priority.js';
+import { SOURCE_NOTE, getEncounterGuide } from './encounter-guides.js';
 const $ = (selector) => document.querySelector(selector);
 const form = $('#character-form');
 const formMessage = $('#form-message');
@@ -15,6 +16,7 @@ const loading = $('#loading');
 const dashboard = $('#dashboard');
 const submitButton = form.querySelector('button[type="submit"]');
 let activeController = null;
+let selectedDungeonGuide = null;
 
 const CLASS_ACCENTS = Object.freeze({
   Druid: '#FF7D0A',
@@ -118,6 +120,88 @@ function renderRaid(raids, wowheadBis = null) {
   }).join('');
 }
 
+function mechanicTagClass(type) {
+  const token = String(type || '').trim().toLowerCase();
+  if (['heal', 'aoe', 'healer'].includes(token)) return 'healing';
+  if (['dispel', 'interrupt', 'cc'].includes(token)) return 'control';
+  if (['tank'].includes(token)) return 'tank';
+  if (['soak', 'spread', 'position', 'move', 'dodge', 'mechanic', 'phase'].includes(token)) return 'mechanic';
+  if (['adds'].includes(token)) return 'adds';
+  return 'neutral';
+}
+
+function renderEncounterGuidePanel(guide, rankEntry, panelId) {
+  if (!guide) return '';
+
+  const score = Math.round(Number(rankEntry?.scoreOpportunity) || 0);
+  const gear = Math.round(Number(rankEntry?.gearOpportunity) || 0);
+  const overall = Math.round(Number(rankEntry?.combinedOpportunity) || 0);
+
+  const bossCards = guide.bosses.map((boss, index) => {
+    const mechanics = boss.mechanics.map(([type, name, detail]) => `
+      <li class="boss-mechanic-row">
+        <span class="mechanic-tag ${mechanicTagClass(type)}">${escapeHtml(type)}</span>
+        <div>
+          <strong>${escapeHtml(name)}</strong>
+          <p>${escapeHtml(detail)}</p>
+        </div>
+      </li>
+    `).join('');
+
+    return `
+      <article class="boss-guide-card severity-${escapeHtml(boss.severity || 'medium')}">
+        <header class="boss-guide-header">
+          <div class="boss-index">${String(index + 1).padStart(2, '0')}</div>
+          <div>
+            <span class="boss-check-label">HEALING CHECK</span>
+            <h5>${escapeHtml(boss.name)}</h5>
+            <strong class="boss-check">${escapeHtml(boss.check)}</strong>
+          </div>
+        </header>
+        <div class="boss-healer-callout">
+          <span>HEALER NOTE</span>
+          <p>${escapeHtml(boss.healing)}</p>
+        </div>
+        <ul class="boss-mechanic-list">${mechanics}</ul>
+      </article>
+    `;
+  }).join('');
+
+  const noteworthy = guide.noteworthy.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+
+  return `
+    <section id="${escapeHtml(panelId)}" class="encounter-detail-panel" aria-label="${escapeHtml(guide.name)} healer encounter guide">
+      <div class="encounter-detail-hero">
+        <div>
+          <p class="eyebrow">HEALER ENCOUNTER BRIEF</p>
+          <h4>${escapeHtml(guide.name)}</h4>
+          <p class="encounter-detail-summary">${escapeHtml(guide.healerSummary)}</p>
+        </div>
+        <div class="encounter-detail-scorecard" aria-label="Progression opportunity">
+          <span><small>Score</small><strong>${score}</strong></span>
+          <span><small>Gear</small><strong>${gear}</strong></span>
+          <span><small>Overall</small><strong>${overall}</strong></span>
+        </div>
+      </div>
+
+      <div class="encounter-healer-priorities">
+        <div class="encounter-priority-heading">
+          <span>HEALER PRIORITIES</span>
+          <strong>What matters most in this dungeon</strong>
+        </div>
+        <ul>${noteworthy}</ul>
+      </div>
+
+      <div class="boss-guide-grid">${bossCards}</div>
+
+      <div class="encounter-guide-source">
+        <strong>Reference basis</strong>
+        <span>${escapeHtml(SOURCE_NOTE)}</span>
+      </div>
+    </section>
+  `;
+}
+
 function renderDungeons(
   dungeons,
   lootDungeons = [],
@@ -126,23 +210,35 @@ function renderDungeons(
   focus = 'balanced'
 ) {
   const container = $('#dungeon-list');
-  const guide = wowheadSourceSummary(wowheadBis);
+  const guideSources = wowheadSourceSummary(wowheadBis);
   const weights = dungeonPriorityWeights(focus);
   const rankedDungeons = rankDungeonProgression(dungeons, lootDungeons, { focus });
   const scorePct = Math.round(weights.score * 100);
   const gearPct = Math.round(weights.gear * 100);
 
+  // If a later content update removes a selected dungeon from the active pool,
+  // close the stale panel instead of leaving an orphaned expanded state.
+  if (
+    selectedDungeonGuide
+    && !rankedDungeons.some((entry) => entry.run?.dungeon === selectedDungeonGuide)
+  ) {
+    selectedDungeonGuide = null;
+  }
+
   const seasonNotice = seasonStatus && !seasonStatus.mythicPlusOpen
-    ? `<div class="season-notice"><strong>Patch 12.1 pool loaded.</strong> Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}. Ordering is ${scorePct}% score opportunity / ${gearPct}% gear opportunity.</div>`
-    : `<div class="season-notice live"><strong>Priority order: ${escapeHtml(weights.label)}.</strong> Dungeons are ranked by ${scorePct}% score opportunity / ${gearPct}% gear opportunity. BiS value already feeds the gear score.</div>`;
+    ? `<div class="season-notice"><strong>Patch 12.1 pool loaded.</strong> Midnight Season 2 Mythic+ opens ${escapeHtml(seasonStatus.mythicPlusOpens)}. Ordering is ${scorePct}% score opportunity / ${gearPct}% gear opportunity. Select a dungeon tile for the healer encounter brief.</div>`
+    : `<div class="season-notice live"><strong>Priority order: ${escapeHtml(weights.label)}.</strong> Dungeons are ranked by ${scorePct}% score opportunity / ${gearPct}% gear opportunity. Select any tile to expand boss mechanics and healer checks.</div>`;
 
   const cards = rankedDungeons.map((entry, index) => {
     const run = entry.run;
     const loot = entry.loot;
+    const encounterGuide = getEncounterGuide(run.dungeon);
+    const isSelected = selectedDungeonGuide === run.dungeon;
+    const panelId = `encounter-detail-${String(run.shortName || index).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
     const gearOpportunity = Math.round(entry.gearOpportunity);
     const scoreOpportunity = Math.round(entry.scoreOpportunity);
     const combined = Math.round(entry.combinedOpportunity);
-    const guideEntry = guide.dungeons.get(
+    const guideEntry = guideSources.dungeons.get(
       clean(run.dungeon)
         .toLowerCase()
         .replace(/[\u2019']/g, '')
@@ -179,8 +275,16 @@ function renderDungeons(
             ? 'USEFUL'
             : 'STABLE';
 
-    return `
-      <article class="encounter-card${index === 0 ? ' recommended combined-priority-top' : ''}${run.hasRun ? '' : ' unrun'}${guideBadge ? ' bis-source-highlight' : ''}">
+    const card = `
+      <article
+        class="encounter-card dungeon-guide-toggle${index === 0 ? ' recommended combined-priority-top' : ''}${run.hasRun ? '' : ' unrun'}${guideBadge ? ' bis-source-highlight' : ''}${isSelected ? ' encounter-card-selected' : ''}${encounterGuide ? '' : ' encounter-guide-unavailable'}"
+        data-dungeon-toggle="${escapeHtml(run.dungeon)}"
+        role="button"
+        tabindex="0"
+        aria-expanded="${isSelected ? 'true' : 'false'}"
+        aria-controls="${escapeHtml(panelId)}"
+        aria-label="${escapeHtml((isSelected ? 'Hide ' : 'Open ') + run.dungeon + ' encounter guide')}"
+      >
         <div class="encounter-card-top">
           ${icon}
           <div class="encounter-rank">#${index + 1}</div>
@@ -201,11 +305,48 @@ function renderDungeons(
           <span class="encounter-priority">${valueLabel}</span>
           ${runLink}
         </div>
+        <div class="encounter-expand-hint" aria-hidden="true">
+          <span>${encounterGuide ? (isSelected ? 'Hide healer guide' : 'View healer guide') : 'Guide unavailable'}</span>
+          <i>${isSelected ? '-' : '+'}</i>
+        </div>
       </article>
     `;
+
+    const detail = isSelected && encounterGuide
+      ? renderEncounterGuidePanel(encounterGuide, entry, panelId)
+      : '';
+
+    return card + detail;
   }).join('');
 
   container.innerHTML = seasonNotice + cards;
+
+  for (const tile of container.querySelectorAll('[data-dungeon-toggle]')) {
+    const toggle = () => {
+      const dungeonName = tile.getAttribute('data-dungeon-toggle');
+      if (!getEncounterGuide(dungeonName)) return;
+      selectedDungeonGuide = selectedDungeonGuide === dungeonName ? null : dungeonName;
+      renderDungeons(dungeons, lootDungeons, seasonStatus, wowheadBis, focus);
+
+      if (selectedDungeonGuide) {
+        requestAnimationFrame(() => {
+          const active = container.querySelector('.encounter-card-selected');
+          active?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      }
+    };
+
+    tile.addEventListener('click', (event) => {
+      if (event.target.closest('a')) return;
+      toggle();
+    });
+
+    tile.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggle();
+    });
+  }
 }
 
 function itemTooltipAttributes({ itemId, region, name, itemLevel, stats = {} }) {
