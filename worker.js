@@ -1,4 +1,5 @@
-﻿import { onRequestGet as getCharacter } from './functions/api/character.js';
+import { onRequestGet as getCharacter } from './functions/api/character.js';
+import { onRequestGet as getBlizzardItem } from './functions/api/blizzard-item.js';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -20,6 +21,14 @@ export default {
       }
 
       return getCharacter({ request, env });
+    }
+
+    if (url.pathname === '/api/blizzard/item') {
+      if (request.method !== 'GET') {
+        return json({ message: 'Method not allowed.' }, 405);
+      }
+
+      return getBlizzardItem({ request, env });
     }
 
     if (url.pathname.startsWith('/api/')) {

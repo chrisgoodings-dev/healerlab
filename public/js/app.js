@@ -71,12 +71,27 @@ function renderGear(gear) {
     container.innerHTML = '<p class="empty-state">No detailed equipment data was returned.</p>';
     return;
   }
-  container.innerHTML = gear.map((item) => `
-    <div class="gear-row">
-      <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.name)} | ${item.belowAverage.toFixed(0)} ilvl below ${item.baseline.toFixed(1)} equipped average</span></div>
-      <span class="gear-ilvl">${item.itemLevel}</span>
-    </div>
-  `).join('');
+
+  container.innerHTML = gear.map((item) => {
+    const icon = item.iconUrl
+      ? `<img class="gear-icon" src="${escapeHtml(item.iconUrl)}" alt="" loading="lazy" />`
+      : `<span class="gear-icon gear-icon-fallback" aria-hidden="true">${escapeHtml(item.label.slice(0, 1))}</span>`;
+    const source = item.source === 'blizzard' ? 'Official Blizzard equipment' : 'Raider.IO equipment';
+
+    return `
+      <div class="gear-row">
+        <div class="gear-item-main">
+          ${icon}
+          <div class="gear-copy">
+            <strong>${escapeHtml(item.label)}</strong>
+            <span>${escapeHtml(item.name)} | ${item.belowAverage.toFixed(0)} ilvl below ${item.baseline.toFixed(1)} equipped average</span>
+            <small class="gear-source">${escapeHtml(source)}${item.itemId ? ` | Item ${item.itemId}` : ''}</small>
+          </div>
+        </div>
+        <span class="gear-ilvl">${item.itemLevel}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderLootPlanner(dungeons, { version, keyLevel, dropItemLevel } = {}) {
@@ -163,6 +178,12 @@ function renderCharacter(character, options) {
   $('#character-name').textContent = character.name || 'Unknown character';
   $('#character-role').textContent = character.active_spec_role || 'HEALER';
   $('#character-meta').textContent = [character.realm, character.class, character.active_spec_name].filter(Boolean).join(' | ');
+  const apiSourceLabel = $('#api-source-label');
+  if (apiSourceLabel) {
+    apiSourceLabel.textContent = character?.healerlab_sources?.blizzard === 'ok'
+      ? 'Raider.IO + Blizzard'
+      : 'Raider.IO';
+  }
   $('#item-level').textContent = itemLevel ? itemLevel.toFixed(1) : '-';
   $('#mythic-score').textContent = score ? Math.round(score).toLocaleString() : '0';
   $('#score-gap').textContent = analysis.scoreGap ? Math.round(analysis.scoreGap).toLocaleString() : 'Goal met';
@@ -206,7 +227,7 @@ function renderCharacter(character, options) {
   }[analysis.focus] || 'Balanced progression';
 
   const farmName = analysis.bestGearFarm?.gearOpportunity > 0 ? analysis.bestGearFarm.name : 'no current farm';
-  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. The gear farm planner matched those weak slots against the curated Midnight Season 2 healer loot pool at +${analysis.farmKeyLevel} (item level ${analysis.farmDropItemLevel}); its current top result is ${farmName}. Opportunity scores are normalised within their category. Cosmetic slots are excluded. This is an item-level progression heuristic, not a Best-in-Slot or healing-throughput simulation.`;
+  $('#method-summary').textContent = `${focusLabel} mode compared ${runCount} best dungeon runs, your ${score.toFixed(1)} rating and ${gearCount} performance slots below your equipped-item average. The gear farm planner matched those weak slots against the curated Midnight Season 2 healer loot pool at +${analysis.farmKeyLevel} (item level ${analysis.farmDropItemLevel}); its current top result is ${farmName}. Opportunity scores are normalised within their category. Equipment data source: ${character?.healerlab_sources?.blizzard === 'ok' ? 'official Blizzard Character Equipment API' : 'Raider.IO fallback'}. Cosmetic slots are excluded. This is an item-level progression heuristic, not a Best-in-Slot or healing-throughput simulation.`;
 }
 
 function escapeHtml(value) {
@@ -236,7 +257,7 @@ async function analyseLiveCharacter(event) {
 
   activeController?.abort();
   activeController = new AbortController();
-  setState('loading', 'Contacting Raider.IO through the HealerLab API...');
+  setState('loading', 'Contacting Raider.IO and Blizzard through the HealerLab API...');
 
   try {
     const character = await fetchCharacter({
@@ -246,7 +267,10 @@ async function analyseLiveCharacter(event) {
     }, { signal: activeController.signal });
 
     renderCharacter(character, currentOptions());
-    setState('ready', `Analysis generated from Raider.IO data retrieved ${new Date().toLocaleTimeString()}.`);
+    const sourceName = character?.healerlab_sources?.blizzard === 'ok'
+      ? 'Raider.IO + Blizzard'
+      : 'Raider.IO';
+    setState('ready', `Analysis generated from ${sourceName} data at ${new Date().toLocaleTimeString()}.`);
     dashboard.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     if (error?.name === 'AbortError') return;

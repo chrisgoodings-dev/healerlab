@@ -91,6 +91,26 @@ Gear analysis calculates the mean item level across returned equipment slots, th
 - Raid composition utility/buff coverage.
 - Saved characters and weekly plans.
 
+## Official Blizzard API integration
+
+HealerLab combines two external data sources. Raider.IO supplies Mythic+ performance and progression observations. Blizzard's official API supplies equipped item IDs, equipped item levels, item metadata, and item media. The Cloudflare Worker obtains a Battle.net OAuth access token with the client-credentials flow; the client secret never reaches browser JavaScript.
+
+Production configuration:
+
+- Public client ID: stored as `BLIZZARD_CLIENT_ID` in `wrangler.jsonc`.
+- Secret: stored only as the Cloudflare Worker secret `BLIZZARD_CLIENT_SECRET`.
+- Character equipment: `/profile/wow/character/{realmSlug}/{characterName}/equipment`.
+- Item lookup: exposed by HealerLab at `/api/blizzard/item?region=eu&id={itemId}`.
+- If Blizzard is unavailable, `/api/character` falls back to Raider.IO equipment so the analysis remains usable.
+
+For local Blizzard testing, create an ignored `.dev.vars` file:
+
+```text
+BLIZZARD_CLIENT_SECRET=your-secret-here
+```
+
+The public client ID is already configured by the project. Never commit `.dev.vars`, `.env`, an OAuth access token, or the Blizzard client secret.
+
 ## Academic note
 
 Keep a clear distinction between external data and your own processing in the report. Raider.IO supplies observations. HealerLab's JavaScript performs the validation, transformation, ranking and recommendation logic.

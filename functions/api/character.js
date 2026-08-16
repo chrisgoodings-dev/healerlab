@@ -1,3 +1,5 @@
+import { enrichCharacterWithBlizzard } from './blizzard.js';
+
 const ALLOWED_REGIONS = new Set(['eu', 'us', 'kr', 'tw']);
 const FIELDS = [
   'gear',
@@ -41,7 +43,7 @@ export async function onRequestGet(context) {
     const response = await fetch(upstream, {
       headers: {
         accept: 'application/json',
-        'user-agent': 'HealerLab/0.1 university-project'
+        'user-agent': 'HealerLab/0.4 university-project'
       },
     });
 
@@ -56,7 +58,14 @@ export async function onRequestGet(context) {
       }, response.status === 404 ? 404 : 502);
     }
 
-    return json(payload);
+    const enriched = await enrichCharacterWithBlizzard(payload, {
+      region,
+      realm,
+      name,
+      env: context.env || {},
+    });
+
+    return json(enriched);
   } catch {
     return json({ message: 'The Raider.IO service could not be reached.' }, 502);
   }

@@ -60,6 +60,10 @@ export function normaliseGear(character) {
       label: SLOT_LABELS[slot],
       itemLevel: Number(item.item_level) || 0,
       name: item.name || 'Equipped item',
+      itemId: Number(item.item_id || item.id) || null,
+      iconUrl: item.icon_url || null,
+      quality: item.quality || null,
+      source: item.source || 'raider.io',
     }));
 }
 

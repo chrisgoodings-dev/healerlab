@@ -2,40 +2,108 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { onRequestGet as getCharacter } from './functions/api/character.js';
+import { onRequestGet as getBlizzardItem } from './functions/api/blizzard-item.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, process.env.SERVE_DIR || 'public');
 const port = Number(process.env.PORT || 5173);
-const fields = 'gear,mythic_plus_scores_by_season:current,mythic_plus_best_runs,raid_progression';
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml' };
+const types = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+};
 
-function send(res, status, body, contentType = 'text/plain; charset=utf-8') {
-  res.writeHead(status, { 'content-type': contentType });
+function send(res, status, body, contentType = 'text/plain; charset=utf-8', headers = {}) {
+  res.writeHead(status, { 'content-type': contentType, ...headers });
   res.end(body);
 }
 
-async function proxyCharacter(req, res, url) {
-  const region = url.searchParams.get('region') || '';
-  const realm = url.searchParams.get('realm') || '';
-  const name = url.searchParams.get('name') || '';
-  const upstream = new URL('https://raider.io/api/v1/characters/profile');
-  upstream.searchParams.set('region', region);
-  upstream.searchParams.set('realm', realm);
-  upstream.searchParams.set('name', name);
-  upstream.searchParams.set('fields', fields);
+function parseDotEnv(text) {
+  const values = {};
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const index = trimmed.indexOf('=');
+    if (index <= 0) continue;
+
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+async function loadLocalEnv() {
+  let devVars = {};
+  try {
+    devVars = parseDotEnv(await readFile(path.join(__dirname, '.dev.vars'), 'utf8'));
+  } catch {
+    // .dev.vars is optional. The site still works with Raider.IO only.
+  }
+
+  return {
+    ...process.env,
+    BLIZZARD_CLIENT_ID:
+      devVars.BLIZZARD_CLIENT_ID ||
+      process.env.BLIZZARD_CLIENT_ID ||
+      'c02a86b8ca7e4800b1e3a29c430808e3',
+    BLIZZARD_CLIENT_SECRET:
+      devVars.BLIZZARD_CLIENT_SECRET ||
+      process.env.BLIZZARD_CLIENT_SECRET ||
+      '',
+  };
+}
+
+const env = await loadLocalEnv();
+
+async function sendFetchResponse(res, response) {
+  const body = Buffer.from(await response.arrayBuffer());
+  const headers = {};
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== 'content-length') headers[key] = value;
+  });
+  res.writeHead(response.status, headers);
+  res.end(body);
+}
+
+async function runApiHandler(req, res, handler) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const request = new Request(url, {
+    method: req.method,
+    headers: req.headers,
+  });
 
   try {
-    const response = await fetch(upstream, { headers: { accept: 'application/json' } });
-    const body = await response.text();
-    send(res, response.status, body, 'application/json; charset=utf-8');
-  } catch {
-    send(res, 502, JSON.stringify({ message: 'Raider.IO is unavailable from the local development server.' }), 'application/json; charset=utf-8');
+    await sendFetchResponse(res, await handler({ request, env }));
+  } catch (error) {
+    send(
+      res,
+      500,
+      JSON.stringify({ message: error?.message || 'Local API handler failed.' }),
+      'application/json; charset=utf-8'
+    );
   }
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname === '/api/character') return proxyCharacter(req, res, url);
+
+  if (url.pathname === '/api/character') {
+    return runApiHandler(req, res, getCharacter);
+  }
+
+  if (url.pathname === '/api/blizzard/item') {
+    return runApiHandler(req, res, getBlizzardItem);
+  }
 
   const relative = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
   const filePath = path.normalize(path.join(root, relative));
@@ -57,5 +125,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`HealerLab running at http://127.0.0.1:${port}`);
+  const blizzard = env.BLIZZARD_CLIENT_SECRET ? 'Blizzard enabled' : 'Blizzard disabled (set .dev.vars)';
+  console.log(`HealerLab running at http://127.0.0.1:${port} | ${blizzard}`);
 });
